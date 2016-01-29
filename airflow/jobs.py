@@ -581,6 +581,10 @@ class SchedulerJob(BaseJob):
                 session.commit()
 
     def _execute(self):
+        """
+        the function that does the actual work of the job
+        :return:
+        """
         dag_id = self.dag_id
 
         def signal_handler(signum, frame):
