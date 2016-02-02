@@ -458,7 +458,7 @@ class SchedulerJob(BaseJob):
             db_dag.last_scheduler_run = datetime.now()
             session.commit()
 
-        active_runs = dag.get_active_runs()
+        active_runs = dag.get_active_runs()  # a list of execution dates
 
         self.logger.info('Getting list of tasks to skip for active runs.')
         skip_tis = set()
