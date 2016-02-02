@@ -86,6 +86,12 @@ def trigger_dag(args):
     # TODO: verify dag_id
     execution_date = datetime.now()
     run_id = args.run_id or "manual__{0}".format(execution_date.isoformat())
+    variables = {}
+    if args.variables:
+        for var in args.variables:
+            k, v = var.split('=')
+            variables[k] = v
+
     dr = session.query(DagRun).filter(
         DagRun.dag_id==args.dag_id, DagRun.run_id==run_id).first()
     if dr:
@@ -96,7 +102,8 @@ def trigger_dag(args):
             run_id=run_id,
             execution_date=execution_date,
             state=State.RUNNING,
-            external_trigger=True)
+            external_trigger=True,
+            conf=variables)
         session.add(trigger)
         logging.info("Created {}".format(trigger))
     session.commit()
@@ -553,6 +560,9 @@ def get_parser():
     parser_trigger_dag.add_argument(
         "-r", "--run_id",
         help="Helps to indentify this run")
+    parser_trigger_dag.add_argument("-v","--variables", nargs="*",
+                                    help="environment variables for this dag run, this overwrites"
+                                         " the default environments setting.")
     parser_trigger_dag.set_defaults(func=trigger_dag)
 
     ht = "Pause a DAG"
