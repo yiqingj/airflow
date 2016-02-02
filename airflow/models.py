@@ -1153,11 +1153,18 @@ class TaskInstance(Base):
                 .first()
             )
             run_id = dag_run.run_id if dag_run else None
+            #TODO  we could add adhoc configuration here!!!!
             session.expunge_all()
             session.commit()
 
         if task.params:
             params.update(task.params)
+
+        if dag_run and dag_run.conf:
+            params.update(dag_run.conf)
+            env = task.dag.default_args.get('env',None)
+            if env:
+                env.update(dag_run.conf)
 
         return {
             'dag': task.dag,
