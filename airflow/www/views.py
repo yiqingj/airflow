@@ -1889,6 +1889,10 @@ class JobModelView(ModelViewOnly):
         latest_heartbeat=datetime_f)
 
 
+def byte(v, c, m, p):
+    attr = getattr(m, p)
+    return Markup("<nobr>{}</nobr>".format(attr))
+
 class DagRunModelView(ModelViewOnly):
     verbose_name_plural = "DAG Runs"
     can_delete = True
@@ -1905,14 +1909,17 @@ class DagRunModelView(ModelViewOnly):
         ],
     }
     column_list = (
+        'state', 'dag_id', 'execution_date', 'run_id', 'external_trigger','conf', 'extra')
+    column_filters = (
         'state', 'dag_id', 'execution_date', 'run_id', 'external_trigger')
-    column_filters = column_list
     column_searchable_list = ('dag_id', 'state', 'run_id')
     column_formatters = dict(
         execution_date=datetime_f,
         state=state_f,
         start_date=datetime_f,
-        dag_id=dag_link)
+        dag_id=dag_link,
+        conf= byte,
+        extra=byte)
 
     @action('set_running', "Set state to 'running'", None)
     def action_set_running(self, ids):

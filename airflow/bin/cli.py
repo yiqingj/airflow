@@ -453,6 +453,13 @@ def kerberos(args):
     airflow.security.kerberos.run()
 
 
+def dag_run_state(args):
+    session = settings.Session()
+    dr = session.query(DagRun).filter(
+            DagRun.dag_id == args.dag_id).order_by(DagRun.execution_date.desc()).first()
+
+    print("{} \n conf: {} \n extra: {}".format(dr, dr.conf, dr.extra))
+
 def get_parser():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help='sub-command help', dest='subcommand')
@@ -741,5 +748,10 @@ def get_parser():
         "-sd", "--subdir", help=subdir_help,
         default=DAGS_FOLDER)
     parser_render.set_defaults(func=render)
+
+    ht = "Check state of last dag_run"
+    parser_dag_run_state = subparsers.add_parser('dag_run_state', help=ht)
+    parser_dag_run_state.add_argument('dag_id', help="the id of the dag to check")
+    parser_dag_run_state.set_defaults(func=dag_run_state)
 
     return parser

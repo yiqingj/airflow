@@ -1153,7 +1153,6 @@ class TaskInstance(Base):
                 .first()
             )
             run_id = dag_run.run_id if dag_run else None
-            #TODO  we could add adhoc configuration here!!!!
             session.expunge_all()
             session.commit()
 
@@ -1162,9 +1161,14 @@ class TaskInstance(Base):
 
         if dag_run and dag_run.conf:
             params.update(dag_run.conf)
+            if hasattr(task, 'env'):
+                env = getattr(task, 'env', None)
+                if env:
+                    env.update(dag_run.conf)
             env = task.dag.default_args.get('env',None)
             if env:
                 env.update(dag_run.conf)
+
 
         return {
             'dag': task.dag,
@@ -2812,6 +2816,7 @@ class DagRun(Base):
     run_id = Column(String(ID_LEN))
     external_trigger = Column(Boolean, default=True)
     conf = Column(PickleType)
+    extra = Column(PickleType)
 
     __table_args__ = (
         Index('dr_run_id', dag_id, run_id, unique=True),
@@ -2905,3 +2910,22 @@ class ImportError(Base):
     timestamp = Column(DateTime)
     filename = Column(String(1024))
     stacktrace = Column(Text)
+
+
+class Result(Base):
+    """
+    Model that stores a history of the SLA that have been missed.
+    It is used to keep track of SLA failures over time and to avoid double
+    triggering alert emails.
+    """
+    __tablename__ = "result"
+
+    id = Column(Integer, primary_key=True)
+    dag_id = Column(String(ID_LEN), primary_key=True)
+    execution_date = Column(DateTime, primary_key=True)
+    timestamp = Column(DateTime)
+    payload = Column(Text)
+
+    def __repr__(self):
+        return str((
+            self.dag_id, self.execution_date.isoformat()))
