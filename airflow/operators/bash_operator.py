@@ -2,6 +2,7 @@
 from builtins import bytes
 import logging
 import sys
+from string import Template
 from subprocess import Popen, STDOUT, PIPE
 from tempfile import gettempdir, NamedTemporaryFile
 
@@ -48,7 +49,7 @@ class BashOperator(BaseOperator):
         Execute the bash command in a temporary directory
         which will be cleaned afterwards
         """
-        bash_command = self.bash_command
+        bash_command =  Template(self.bash_command).safe_substitute(self.env)
         logging.info("tmp dir root location: \n" + gettempdir())
         with TemporaryDirectory(prefix='airflowtmp') as tmp_dir:
             with NamedTemporaryFile(dir=tmp_dir, prefix=self.task_id) as f:
