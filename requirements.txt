@@ -54,3 +54,4 @@ pykerberos
 bcrypt
 flask-bcrypt
 mock
+hdfs

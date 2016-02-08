@@ -192,9 +192,9 @@ class DagBag(LoggingMixin):
 
         if safe_mode and os.path.isfile(filepath):
             # Skip file if no obvious references to airflow or DAG are found.
-            with open(filepath, 'r') as f:
+            with open(filepath, 'rb') as f:
                 content = f.read()
-                if not all([s in content for s in ('DAG', 'airflow')]):
+                if not all([s in content for s in (b'DAG', b'airflow')]):
                     return found_dags
 
         if (not only_if_updated or
@@ -978,10 +978,11 @@ class TaskInstance(Base):
         elif force or self.state in State.runnable():
             HR = "\n" + ("-" * 80) + "\n"  # Line break
             tot_tries = task.retries + 1
-            if self.try_number == 0:
-                msg = "First run"
-            else:
-                msg = "Attempt {self.try_number} out of {tot_tries}"
+            # For reporting purposes, we report based on 1-indexed,
+            # not 0-indexed lists (i.e. Attempt 1 instead of
+            # Attempt 0 for the first attempt)
+            msg = "Attempt {} out of {}".format(self.try_number+1,
+                                                tot_tries)
             self.try_number += 1
             msg = msg.format(**locals())
             logging.info(HR + msg + HR)
@@ -992,6 +993,11 @@ class TaskInstance(Base):
                 # If a pool is set for this task, marking the task instance
                 # as QUEUED
                 self.state = State.QUEUED
+                # Since we are just getting enqueued, we need to undo
+                # the try_number increment above and update the message as well
+                self.try_number -= 1
+                msg = "Queuing attempt {} out of {}".format(self.try_number+1,
+                                                            tot_tries)
                 self.queued_dttm = datetime.now()
                 session.merge(self)
                 session.commit()
@@ -1939,7 +1945,9 @@ class DagModel(Base):
     """
     dag_id = Column(String(ID_LEN), primary_key=True)
     # A DAG can be paused from the UI / DB
-    is_paused = Column(Boolean, default=False)
+    # Set this default value of is_paused based on a configuration value!
+    is_paused_at_creation = configuration.getboolean('core', 'dags_are_paused_at_creation')
+    is_paused = Column(Boolean, default=is_paused_at_creation)
     # Whether the DAG is a subdag
     is_subdag = Column(Boolean, default=False)
     # Whether that DAG was seen on the last DagBag load
@@ -2059,7 +2067,7 @@ class DAG(LoggingMixin):
         self.tasks = []
         self.dag_id = dag_id
         self.start_date = start_date
-        self.end_date = end_date or datetime.now()
+        self.end_date = end_date
         self.schedule_interval = schedule_interval
         if schedule_interval in utils.cron_presets:
             self._schedule_interval = utils.cron_presets.get(schedule_interval)
@@ -2183,6 +2191,16 @@ class DAG(LoggingMixin):
             TI.state == State.RUNNING,
         )
         return qry.scalar() >= self.concurrency
+
+    @property
+    @provide_session
+    def is_paused(self, session=None):
+        """
+        Returns a boolean as to whether this DAG is paused
+        """
+        qry = session.query(DagModel).filter(
+            DagModel.dag_id == self.dag_id)
+        return qry.value('is_paused')
 
     @property
     def latest_execution_date(self):
@@ -2621,11 +2639,35 @@ class Variable(Base):
 
     id = Column(Integer, primary_key=True)
     key = Column(String(ID_LEN), unique=True)
-    val = Column(Text)
+    _val = Column('val', Text)
+    is_encrypted = Column(Boolean, unique=False, default=False)
 
     def __repr__(self):
-        return '{} : {}'.format(self.key, self.val)
+        # Hiding the value
+        return '{} : {}'.format(self.key, self._val)
 
+    def get_val(self):
+        if self._val and self.is_encrypted:
+            if not ENCRYPTION_ON:
+                raise AirflowException(
+                    "Can't decrypt _val, configuration is missing")
+            return FERNET.decrypt(bytes(self._val, 'utf-8')).decode()
+        else:
+            return self._val
+
+    def set_val(self, value):
+        if value:
+            try:
+                self._val = FERNET.encrypt(bytes(value, 'utf-8')).decode()
+                self.is_encrypted = True
+            except NameError:
+                self._val = value
+                self.is_encrypted = False
+
+    @declared_attr
+    def val(cls):
+        return synonym('_val',
+                       descriptor=property(cls.get_val, cls.set_val))
     @classmethod
     @provide_session
     def get(cls, key, default_var=None, deserialize_json=False, session=None):
