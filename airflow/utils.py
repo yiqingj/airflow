@@ -534,9 +534,10 @@ def send_MIME_email(e_from, e_to, mime_msg, dryrun=False):
     SMTP_USER = configuration.get('smtp', 'SMTP_USER')
     SMTP_PASSWORD = configuration.get('smtp', 'SMTP_PASSWORD')
     SMTP_STARTTLS = configuration.getboolean('smtp', 'SMTP_STARTTLS')
+    SMTP_SSL = configuration.getboolean('smtp', 'SMTP_SSL')
 
     if not dryrun:
-        s = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        s = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) if SMTP_SSL else smtplib.SMTP(SMTP_HOST, SMTP_PORT)
         if SMTP_STARTTLS:
             s.starttls()
         if SMTP_USER and SMTP_PASSWORD:
@@ -617,11 +618,19 @@ class timeout(object):
         raise AirflowTaskTimeout(self.error_message)
 
     def __enter__(self):
-        signal.signal(signal.SIGALRM, self.handle_timeout)
-        signal.alarm(self.seconds)
+        try:
+            signal.signal(signal.SIGALRM, self.handle_timeout)
+            signal.alarm(self.seconds)
+        except ValueError as e:
+            logging.warning("timeout can't be used in the current context")
+            logging.exception(e)
 
     def __exit__(self, type, value, traceback):
-        signal.alarm(0)
+        try:
+            signal.alarm(0)
+        except ValueError as e:
+            logging.warning("timeout can't be used in the current context")
+            logging.exception(e)
 
 
 def is_container(obj):

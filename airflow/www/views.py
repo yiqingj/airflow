@@ -16,14 +16,14 @@ import inspect
 import traceback
 
 import sqlalchemy as sqla
-from sqlalchemy import or_
+from sqlalchemy import or_, desc
 
 
 from flask import redirect, url_for, request, Markup, Response, current_app, render_template
-from flask.ext.admin import BaseView, expose, AdminIndexView
-from flask.ext.admin.contrib.sqla import ModelView
-from flask.ext.admin.actions import action
-from flask.ext.login import flash
+from flask_admin import BaseView, expose, AdminIndexView
+from flask_admin.contrib.sqla import ModelView
+from flask_admin.actions import action
+from flask_login import flash
 from flask._compat import PY2
 
 import jinja2
@@ -1247,7 +1247,11 @@ class Airflow(BaseView):
             dttm = dag.latest_execution_date or datetime.now().date()
 
         DR = models.DagRun
-        drs = session.query(DR).filter_by(dag_id=dag_id).order_by('execution_date desc').all()
+        drs = (
+            session.query(DR)
+            .filter_by(dag_id=dag_id)
+            .order_by(desc(DR.execution_date)).all()
+        )
         dr_choices = []
         dr_state = None
         for dr in drs:
@@ -2092,6 +2096,7 @@ class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
     form_choices = {
         'conn_type': [
             ('bigquery', 'BigQuery',),
+            ('datastore', 'Google Datastore'),
             ('ftp', 'FTP',),
             ('google_cloud_storage', 'Google Cloud Storage'),
             ('hdfs', 'HDFS',),

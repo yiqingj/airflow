@@ -23,6 +23,7 @@ class BashOperator(BaseOperator):
         of inheriting the current process environment, which is the default
         behavior.
     :type env: dict
+    :type output_encoding: output encoding of bash command
     """
     template_fields = ('bash_command', 'env')
     template_ext = ('.sh', '.bash',)
@@ -34,6 +35,7 @@ class BashOperator(BaseOperator):
             bash_command,
             xcom_push=False,
             env=None,
+            output_encoding='utf-8',
             *args, **kwargs):
         """
         If xcom_push is True, the last line written to stdout will also
@@ -43,6 +45,7 @@ class BashOperator(BaseOperator):
         self.bash_command = bash_command
         self.env = env
         self.xcom_push_flag = xcom_push
+        self.output_encoding = output_encoding
 
     def execute(self, context):
         """
@@ -71,7 +74,7 @@ class BashOperator(BaseOperator):
                 logging.info("Output:")
                 line = ''
                 for line in iter(sp.stdout.readline, b''):
-                    line = line.decode().strip()
+                    line = line.decode(self.output_encoding).strip()
                     logging.info(line)
                 sp.wait()
                 logging.info("Command exited with "

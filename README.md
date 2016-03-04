@@ -50,8 +50,9 @@ if you may.
 
 Currently **officially** using Airflow:
 
-* Airbnb [@mistercrunch]
+* [Airbnb](http://airbnb.io/) [[@mistercrunch](https://github.com/mistercrunch), [@artwr](https://github.com/artwr)]
 * [Agari] (https://github.com/agaridata) [[@r39132](https://github.com/r39132)]
+* [allegro.pl](http://allegro.tech/) [[@kretes](https://github.com/kretes)]
 * [Bellhops](https://github.com/bellhops)
 * BlueApron [[@jasonjho](https://github.com/jasonjho) & [@matthewdavidhauser](https://github.com/matthewdavidhauser)]
 * [Clover Health] (https://www.cloverhealth.com) [[@gwax](https://github.com/gwax) & [@vansivallab](https://github.com/vansivallab)]
@@ -64,6 +65,8 @@ Currently **officially** using Airflow:
 * [Hootsuite](https://github.com/hootsuite)
 * ING
 * [Jampp](https://github.com/jampp)
+* [Kogan.com](https://github.com/kogan) [[@geeknam](https://github.com/geeknam)]
+* [LendUp](https://www.lendup.com/) [[@lendup](https://github.com/lendup)]
 * [LingoChamp](http://www.liulishuo.com/) [[@haitaoyao](https://github.com/haitaoyao)]
 * Lyft
 * [Sense360](https://github.com/Sense360) [[@kamilmroczek](https://github.com/KamilMroczek)]
@@ -71,6 +74,7 @@ Currently **officially** using Airflow:
 * [SimilarWeb](https://www.similarweb.com/) [[@similarweb](https://github.com/similarweb)]
 * [SmartNews](https://www.smartnews.com/) [[@takus](https://github.com/takus)]
 * Stripe [@jbalogh]
+* [Thumbtack](https://www.thumbtack.com/) [[@natekupp](https://github.com/natekupp)]
 * [WeTransfer](https://github.com/WeTransfer) [[@jochem](https://github.com/jochem)]
 * Wooga
 * Xoom [[@gepser](https://github.com/gepser) & [@omarvides](https://github.com/omarvides)]
@@ -81,9 +85,11 @@ Currently **officially** using Airflow:
 * [Full documentation on pythonhosted.com](http://pythonhosted.org/airflow/)
 * [Airflow Google Group (mailing list / forum)](https://groups.google.com/forum/#!forum/airbnb_airflow)
 * [Airbnb Blog Post about Airflow](http://nerds.airbnb.com/airflow/)
+* [Airflow Common Pitfalls](https://github.com/airbnb/airflow/wiki/Airflow-Common-Pitfalls)
 * [Hadoop Summit Airflow Video](https://www.youtube.com/watch?v=oYp49mBwH60)
 * [Airflow at Agari Blog Post](http://agari.com/blog/airflow-agari)
 * [Best practices with Airflow (Max) nov 2015](https://youtu.be/dgaoqOZlvEA)
+* [Airflow (Lesson 1) : TriggerDagRunOperator](https://www.linkedin.com/pulse/airflow-lesson-1-triggerdagrunoperator-siddharth-anand?published=t)
 * [Docker Airflow (externally maintained)](https://github.com/puckel/docker-airflow)
 * [Airflow: Tips, Tricks, and Pitfalls @ Handy](https://medium.com/handy-tech/airflow-tips-tricks-and-pitfalls-9ba53fba14eb#.o2snqeoz7)
 * Airflow Chef recipe (community contributed) [github] (https://github.com/bahchis/airflow-cookbook) [chef] (https://supermarket.chef.io/cookbooks/airflow)

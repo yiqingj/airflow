@@ -76,6 +76,8 @@ defaults = {
         'max_active_runs_per_dag': 16,
         'executor': 'SequentialExecutor',
         'dags_are_paused_at_creation': False,
+        'sql_alchemy_pool_size': 5,
+        'sql_alchemy_pool_recycle': 3600,
     },
     'webserver': {
         'base_url': 'http://localhost:8080',
@@ -104,6 +106,7 @@ defaults = {
     },
     'smtp': {
         'smtp_starttls': True,
+        'smtp_ssl': False,
         'smtp_user': '',
         'smtp_password': '',
     },
@@ -142,6 +145,15 @@ executor = SequentialExecutor
 # SqlAlchemy supports many different database engine, more information
 # their website
 sql_alchemy_conn = sqlite:///{AIRFLOW_HOME}/airflow.db
+
+# The SqlAlchemy pool size is the maximum number of database connections
+# in the pool.
+sql_alchemy_pool_size = 5
+
+# The SqlAlchemy pool recycle is the number of seconds a connection
+# can be idle in the pool before it is invalidated. This config does
+# not apply to sqlite.
+sql_alchemy_pool_recycle = 3600
 
 # The amount of parallelism as a setting to the executor. This defines
 # the max number of task instances that should run simultaneously
@@ -208,6 +220,7 @@ filter_by_owner = False
 # server here
 smtp_host = localhost
 smtp_starttls = True
+smtp_ssl = False
 smtp_user = airflow
 smtp_port = 25
 smtp_password = airflow
@@ -384,7 +397,7 @@ class ConfigParserWithDefaults(ConfigParser):
         elif self.has_option(section, key):
             return expand_env_var(ConfigParser.get(self, section, key, **kwargs))
 
-        elif ((section, key) in ConfigParserWithDefaults.as_command_stdout 
+        elif ((section, key) in ConfigParserWithDefaults.as_command_stdout
             and self.has_option(section, fallback_key)):
             command = self.get(section, fallback_key)
             return run_command(command)
@@ -519,4 +532,3 @@ def set(section, option, value):
 
 def get_dags_folder():
     return os.path.expanduser(get('core', 'DAGS_FOLDER'))
-
