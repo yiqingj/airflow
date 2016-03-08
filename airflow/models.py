@@ -283,6 +283,18 @@ class DagBag(LoggingMixin):
             orm_dag.owners = root_dag.owner
             orm_dag.is_active = True
             session.merge(orm_dag)
+            # yiqing: add task into task table for web UI.
+            for task in dag.tasks:
+                orm_task = session.query(Task).filter(Task.task_id == task.task_id,
+                                                      Task.dag_id == task.dag_id).first()
+                if not orm_task:
+                    orm_task = Task(
+                            task_id=task.task_id,
+                            dag_id=task.dag_id)
+                orm_task.operator = task.task_type
+                orm_task.upstreams = [task.task_id for task in task.upstream_list]
+                orm_task.downstreams = [task.task_id for task in task.downstream_list]
+                session.merge(orm_task)
             session.commit()
             session.close()
 

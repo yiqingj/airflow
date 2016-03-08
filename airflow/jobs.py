@@ -421,6 +421,10 @@ class SchedulerJob(BaseJob):
                     external_trigger=False
                 )
                 session.add(next_run)
+                # yiqing: create all task instances when scheduling it to make web UI easier.
+                for task in dag.tasks:
+                    ti = TI(task, next_run_date)
+                    session.add(ti)
                 session.commit()
                 return next_run
 
@@ -473,10 +477,12 @@ class SchedulerJob(BaseJob):
             )
             skip_tis = {(ti[0], ti[1]) for ti in qry.all()}
 
+        # get data set of all task runs of active dag runs
         descartes = [obj for obj in product(dag.tasks, active_runs)]
         self.logger.info('Checking dependencies on {} tasks instances, minus {} '
                      'skippable ones'.format(len(descartes), len(skip_tis)))
         for task, dttm in descartes:
+            # skip others, only left queued and unscheduled tasks
             if task.adhoc or (task.task_id, dttm) in skip_tis:
                 continue
             ti = TI(task, dttm)
