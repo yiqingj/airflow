@@ -28,7 +28,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
-    Index, Float)
+    Index, Float,TEXT)
 from sqlalchemy import case, func, or_, and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -542,6 +542,18 @@ class DagPickle(Base):
         self.pickle_hash = hash(dag)
         self.pickle = dag
 
+from sqlalchemy.dialects.postgresql import ARRAY
+
+class Task(Base):
+    """
+    Task store the task information for web viewing purpose
+    """
+    __tablename__ = 'task'
+    task_id =Column(String(ID_LEN), primary_key=True)  # this is the task name
+    dag_id =Column(String(ID_LEN), primary_key=True)  # this is the dag name
+    operator =Column(String(50))  # the operator type of this task.=
+    upstreams =Column(ARRAY(String, dimensions=1))
+    code =Column(TEXT)
 
 class TaskInstance(Base):
     """
