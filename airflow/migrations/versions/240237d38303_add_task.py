@@ -34,8 +34,23 @@ def upgrade():
                 sa.PrimaryKeyConstraint('task_id', 'dag_id')
         )
     op.add_column('dag', sa.Column('health_status', sa.String(length=20), nullable=True))
+    op.add_column('dag_run', sa.Column('version', sa.Integer(), server_default='0'))
+    op.add_column('dag_run', sa.Column('queue', sa.String(50)))
+    op.add_column('task_instance', sa.Column('version',  sa.Integer(), server_default='0'))
+    op.add_column('task_instance', sa.Column('expired',  sa.Boolean(), server_default='false'))
+    op.drop_constraint('task_instance_pkey', 'task_instance')
+    op.create_primary_key('task_instance_pkey', 'task_instance',
+                          ['task_id', 'dag_id', 'execution_date', 'version'])
 
 
 def downgrade():
     op.drop_table('task')
     op.drop_column('dag', 'health_status')
+    op.drop_column('dag_run', 'version')
+    op.drop_column('dag_run', 'queue')
+
+    op.drop_constraint('task_instance_pkey', 'task_instance')
+
+    op.create_primary_key('task_instance_pkey', 'task_instance',
+                          ['task_id', 'dag_id', 'execution_date'])
+    op.drop_column('task_instance', 'version')

@@ -422,6 +422,7 @@ class SchedulerJob(BaseJob):
                 )
                 session.add(next_run)
                 # yiqing: create all task instances when scheduling it to make web UI easier.
+                TI = models.TaskInstance
                 for task in dag.tasks:
                     ti = TI(task, next_run_date)
                     session.add(ti)
@@ -472,6 +473,7 @@ class SchedulerJob(BaseJob):
                 .filter(
                     TI.dag_id == dag.dag_id,
                     TI.execution_date.in_(active_runs),
+                    ~TI.expired,
                     TI.state.in_((State.RUNNING, State.SUCCESS, State.FAILED)),
                 )
             )
