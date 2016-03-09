@@ -3,6 +3,7 @@
 [![Join the chat at https://gitter.im/airbnb/airflow](https://badges.gitter.im/airbnb/airflow.svg)](https://gitter.im/airbnb/airflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Build Status](https://travis-ci.org/airbnb/airflow.svg)](https://travis-ci.org/airbnb/airflow)
 [![Coverage Status](https://coveralls.io/repos/airbnb/airflow/badge.svg?service=github)](https://coveralls.io/github/airbnb/airflow)
+[![Code Health](https://landscape.io/github/airbnb/airflow/master/landscape.svg?style=flat)](https://landscape.io/github/airbnb/airflow/master)
 [![pypi downloads](https://img.shields.io/pypi/dm/airflow.svg)](https://pypi.python.org/pypi/airflow/)
 
 Airflow is a platform to programmatically author, schedule and monitor
@@ -48,6 +49,13 @@ As the Airflow community grows, we'd like to keep track of who is using
 the platform. Please send a PR with your company name and @githubhandle
 if you may.
 
+Committers:
+
+* [@mistercrunch](https://github.com/mistercrunch) ([Airbnb](http://airbnb.io/))
+* [@r39132](https://github.com/r39132) ([Agari](https://github.com/agaridata))
+* [@criccomini](https://github.com/criccomini) ([WePay](http://www.wepay.com))
+* [@bolkedebruin](https://github.com/bolkedebruin) ([ING](http://www.ing.com/))
+
 Currently **officially** using Airflow:
 
 * [Airbnb](http://airbnb.io/) [[@mistercrunch](https://github.com/mistercrunch), [@artwr](https://github.com/artwr)]
@@ -63,7 +71,7 @@ Currently **officially** using Airflow:
 * [Handy](http://www.handy.com/careers/73115?gh_jid=73115&gh_src=o5qcxn) [[@marcintustin](https://github.com/marcintustin) / [@mtustin-handy](https://github.com/mtustin-handy)]
 * [Holimetrix](http://holimetrix.com/) [[@thibault-ketterer](https://github.com/thibault-ketterer)]
 * [Hootsuite](https://github.com/hootsuite)
-* ING
+* [ING](http://www.ing.com/)
 * [Jampp](https://github.com/jampp)
 * [Kogan.com](https://github.com/kogan) [[@geeknam](https://github.com/geeknam)]
 * [LendUp](https://www.lendup.com/) [[@lendup](https://github.com/lendup)]
@@ -78,6 +86,7 @@ Currently **officially** using Airflow:
 * [WeTransfer](https://github.com/WeTransfer) [[@jochem](https://github.com/jochem)]
 * Wooga
 * Xoom [[@gepser](https://github.com/gepser) & [@omarvides](https://github.com/omarvides)]
+* [WePay](http://www.wepay.com) [[@criccomini](https://github.com/criccomini) & [@mtagle](https://github.com/mtagle)]
 * Yahoo!
 
 ## Links
