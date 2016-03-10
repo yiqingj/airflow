@@ -283,6 +283,7 @@ class DagBag(LoggingMixin):
             orm_dag.is_subdag = dag.is_subdag
             orm_dag.owners = root_dag.owner
             orm_dag.is_active = True
+            orm_dag.params = json.dumps(dag.params)
             session.merge(orm_dag)
             # yiqing: add task into task table for web UI.
             for task in dag.tasks:
@@ -2029,6 +2030,11 @@ class DagModel(Base):
     fileloc = Column(String(2000))
     # String representing the owners
     owners = Column(String(2000))
+
+    # yiqing : make webapp work without dag python objects.
+    params = Column(TEXT)  # json format
+    health = Column(String(30))
+
 
     def __repr__(self):
         return "<DAG: {self.dag_id}>".format(self=self)
