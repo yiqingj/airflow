@@ -283,6 +283,7 @@ class DagBag(LoggingMixin):
             orm_dag.is_subdag = dag.is_subdag
             orm_dag.owners = root_dag.owner
             orm_dag.is_active = True
+            orm_dag.schedule = dag.schedule_interval_raw
             orm_dag.params = json.dumps(dag.params)
             session.merge(orm_dag)
             # yiqing: add task into task table for web UI.
@@ -607,6 +608,8 @@ class TaskInstance(Base):
     # yiqing
     expired = Column(Boolean, default=False)
     version = Column(Integer, default=0, primary_key=True)  # version of dag run, used for re-run
+    upstreams =Column(ARRAY(String, dimensions=1))
+    downstreams =Column(ARRAY(String, dimensions=1))
 
 
     __table_args__ = (
@@ -2033,6 +2036,7 @@ class DagModel(Base):
 
     # yiqing : make webapp work without dag python objects.
     params = Column(TEXT)  # json format
+    schedule = Column(String(1000))
     health = Column(String(30))
 
 
@@ -2143,6 +2147,7 @@ class DAG(LoggingMixin):
         self.start_date = start_date
         self.end_date = end_date
         self.schedule_interval = schedule_interval
+        self.schedule_interval_raw = schedule_interval
         if schedule_interval in utils.cron_presets:
             self._schedule_interval = utils.cron_presets.get(schedule_interval)
         elif schedule_interval == '@once':

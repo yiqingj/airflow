@@ -426,6 +426,8 @@ class SchedulerJob(BaseJob):
                 TI = models.TaskInstance
                 for task in dag.tasks:
                     ti = TI(task, next_run_date)
+                    ti.upstreams = [t.task_id for t in task.upstream_list]
+                    ti.downstreams = [t.task_id for t in task.downstream_list]
                     session.add(ti)
                 session.commit()
                 return next_run
