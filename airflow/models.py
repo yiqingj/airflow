@@ -288,7 +288,7 @@ class DagBag(LoggingMixin):
             session.merge(orm_dag)
             # yiqing: add task into task table for web UI.
             for task in dag.tasks:
-                print('task={}, down={}'.format(task.task_id,task.downstream_list))
+
                 orm_task = session.query(Task).filter(Task.task_id == task.task_id,
                                                       Task.dag_id == task.dag_id).first()
                 if not orm_task:
@@ -298,7 +298,6 @@ class DagBag(LoggingMixin):
                 orm_task.operator = task.task_type
                 orm_task.upstreams = [t.task_id for t in task.upstream_list]
                 orm_task.downstreams = [t.task_id for t in task.downstream_list]
-                print('taskrun={}, down={}'.format(orm_task.task_id,orm_task.downstreams))
                 session.merge(orm_task)
             session.commit()
             session.close()
@@ -606,6 +605,7 @@ class TaskInstance(Base):
     operator = Column(String(1000))
     queued_dttm = Column(DateTime)
     # yiqing
+    # mark expired to true for lower versions so scheduler knows to skip them(easily)
     expired = Column(Boolean, default=False)
     version = Column(Integer, default=0, primary_key=True)  # version of dag run, used for re-run
     upstreams =Column(ARRAY(String, dimensions=1))
@@ -2334,7 +2334,7 @@ class DAG(LoggingMixin):
             ).all()
             if len(task_instances) >= len(self.active_tasks):
                 # yiqing: since we pre create all task_instances
-                # now this check if not necessary any more
+                # now this check is not necessary any more
                 task_states = [ti.state for ti in task_instances]
                 if State.FAILED in task_states:
                     self.logger.info('Marking run {} failed'.format(run))
