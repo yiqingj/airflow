@@ -1957,9 +1957,12 @@ class DagRunModelView(ModelViewOnly):
             ('failed', 'failed'),
         ],
     }
+    # TODO  conf and extra fields are now in json format,
+    # this is for debug only, should find a better way to display these info
     column_list = (
+        'state', 'dag_id', 'execution_date', 'run_id', 'external_trigger','conf','extra')
+    column_filters = (
         'state', 'dag_id', 'execution_date', 'run_id', 'external_trigger')
-    column_filters = column_list
     column_searchable_list = ('dag_id', 'state', 'run_id')
     column_formatters = dict(
         execution_date=datetime_f,

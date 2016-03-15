@@ -422,6 +422,13 @@ class SchedulerJob(BaseJob):
                     external_trigger=False
                 )
                 session.add(next_run)
+                # yiqing: create all task instances when scheduling it to make web UI easier.
+                TI = models.TaskInstance
+                for task in dag.tasks:
+                    ti = TI(task, next_run_date)
+                    ti.upstreams = [t.task_id for t in task.upstream_list]
+                    ti.downstreams = [t.task_id for t in task.downstream_list]
+                    session.add(ti)
                 session.commit()
                 return next_run
 
@@ -459,7 +466,7 @@ class SchedulerJob(BaseJob):
             db_dag.last_scheduler_run = datetime.now()
             session.commit()
 
-        active_runs = dag.get_active_runs()
+        active_runs = dag.get_active_runs()  # a list of execution dates
 
         self.logger.info('Getting list of tasks to skip for active runs.')
         skip_tis = set()
@@ -469,15 +476,18 @@ class SchedulerJob(BaseJob):
                 .filter(
                     TI.dag_id == dag.dag_id,
                     TI.execution_date.in_(active_runs),
+                    ~TI.expired,
                     TI.state.in_((State.RUNNING, State.SUCCESS, State.FAILED)),
                 )
             )
             skip_tis = {(ti[0], ti[1]) for ti in qry.all()}
 
+        # get data set of all task runs of active dag runs
         descartes = [obj for obj in product(dag.tasks, active_runs)]
         self.logger.info('Checking dependencies on {} tasks instances, minus {} '
                      'skippable ones'.format(len(descartes), len(skip_tis)))
         for task, dttm in descartes:
+            # skip others, only left queued and unscheduled tasks
             if task.adhoc or (task.task_id, dttm) in skip_tis:
                 continue
             ti = TI(task, dttm)
@@ -587,6 +597,10 @@ class SchedulerJob(BaseJob):
                 session.commit()
 
     def _execute(self):
+        """
+        the function that does the actual work of the job
+        :return:
+        """
         dag_id = self.dag_id
 
         def signal_handler(signum, frame):

@@ -28,7 +28,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
-    Index, Float)
+    Index, Float, TEXT)
 from sqlalchemy import case, func, or_, and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -283,7 +283,22 @@ class DagBag(LoggingMixin):
             orm_dag.is_subdag = dag.is_subdag
             orm_dag.owners = root_dag.owner
             orm_dag.is_active = True
+            orm_dag.schedule = dag.schedule_interval_raw
+            orm_dag.params = json.dumps(dag.params)
             session.merge(orm_dag)
+            # yiqing: add task into task table for web UI.
+            for task in dag.tasks:
+
+                orm_task = session.query(Task).filter(Task.task_id == task.task_id,
+                                                      Task.dag_id == task.dag_id).first()
+                if not orm_task:
+                    orm_task = Task(
+                            task_id=task.task_id,
+                            dag_id=task.dag_id)
+                orm_task.operator = task.task_type
+                orm_task.upstreams = [t.task_id for t in task.upstream_list]
+                orm_task.downstreams = [t.task_id for t in task.downstream_list]
+                session.merge(orm_task)
             session.commit()
             session.close()
 
@@ -543,6 +558,19 @@ class DagPickle(Base):
         self.pickle_hash = hash(dag)
         self.pickle = dag
 
+from sqlalchemy.dialects.postgresql import ARRAY
+
+class Task(Base):
+    """
+    Task store the task information for web viewing purpose
+    """
+    __tablename__ = 'task'
+    task_id =Column(String(ID_LEN), primary_key=True)  # this is the task name
+    dag_id =Column(String(ID_LEN), primary_key=True)  # this is the dag name
+    operator =Column(String(50))  # the operator type of this task.=
+    upstreams =Column(ARRAY(String, dimensions=1))
+    downstreams =Column(ARRAY(String, dimensions=1))
+    code =Column(TEXT)
 
 class TaskInstance(Base):
     """
@@ -576,6 +604,13 @@ class TaskInstance(Base):
     priority_weight = Column(Integer)
     operator = Column(String(1000))
     queued_dttm = Column(DateTime)
+    # yiqing
+    # mark expired to true for lower versions so scheduler knows to skip them(easily)
+    expired = Column(Boolean, default=False)
+    version = Column(Integer, default=0, primary_key=True)  # version of dag run, used for re-run
+    upstreams =Column(ARRAY(String, dimensions=1))
+    downstreams =Column(ARRAY(String, dimensions=1))
+
 
     __table_args__ = (
         Index('ti_dag_state', dag_id, state),
@@ -583,18 +618,24 @@ class TaskInstance(Base):
         Index('ti_pool', pool, state, priority_weight),
     )
 
-    def __init__(self, task, execution_date, state=None):
-        self.dag_id = task.dag_id
-        self.task_id = task.task_id
+    def __init__(self, task=None, execution_date=None, state=None,
+                 dag_id=None, task_id= None, version=0):
+        if task:
+            self.dag_id = task.dag_id
+            self.task_id = task.task_id
+            self.queue = task.queue
+            self.pool = task.pool
+            self.task = task
+            self.priority_weight = task.priority_weight_total
+            self.try_number = 0
+            self.test_mode = False  # can be changed when calling 'run'
+            self.force = False  # can be changed when calling 'run'
+            self.unixname = getpass.getuser()
+        else:
+            self.dag_id = dag_id
+            self.task_id = task_id
         self.execution_date = execution_date
-        self.task = task
-        self.queue = task.queue
-        self.pool = task.pool
-        self.priority_weight = task.priority_weight_total
-        self.try_number = 0
-        self.test_mode = False  # can be changed when calling 'run'
-        self.force = False  # can be changed when calling 'run'
-        self.unixname = getpass.getuser()
+        self.version = version
         if state:
             self.state = state
 
@@ -706,12 +747,13 @@ class TaskInstance(Base):
             TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
             TI.execution_date == self.execution_date,
-        ).first()
+        ).order_by(TI.version.desc()).first()
         if ti:
             self.state = ti.state
             self.start_date = ti.start_date
             self.end_date = ti.end_date
             self.try_number = ti.try_number
+            self.version = ti.version
         else:
             self.state = None
 
@@ -965,7 +1007,7 @@ class TaskInstance(Base):
         self.force = force
         session = settings.Session()
         self.refresh_from_db(session)
-        session.commit()
+        # session.commit()
         self.job_id = job_id
         iso = datetime.now().isoformat()
         self.hostname = socket.gethostname()
@@ -1178,11 +1220,18 @@ class TaskInstance(Base):
                 .first()
             )
             run_id = dag_run.run_id if dag_run else None
+            #TODO  we could add adhoc configuration here!!!!
             session.expunge_all()
             session.commit()
 
         if task.params:
             params.update(task.params)
+
+        if dag_run and dag_run.conf:
+            params.update(dag_run.conf)
+            env = task.dag.default_args.get('env',None)
+            if env:
+                env.update(dag_run.conf)
 
         return {
             'dag': task.dag,
@@ -1987,6 +2036,12 @@ class DagModel(Base):
     # String representing the owners
     owners = Column(String(2000))
 
+    # yiqing : make webapp work without dag python objects.
+    params = Column(TEXT)  # json format
+    schedule = Column(String(1000))
+    health = Column(String(30))
+
+
     def __repr__(self):
         return "<DAG: {self.dag_id}>".format(self=self)
 
@@ -2094,6 +2149,7 @@ class DAG(LoggingMixin):
         self.start_date = start_date
         self.end_date = end_date
         self.schedule_interval = schedule_interval
+        self.schedule_interval_raw = schedule_interval
         if schedule_interval in utils.cron_presets:
             self._schedule_interval = utils.cron_presets.get(schedule_interval)
         elif schedule_interval == '@once':
@@ -2276,8 +2332,11 @@ class DAG(LoggingMixin):
                 TI.dag_id == run.dag_id,
                 TI.task_id.in_(self.active_task_ids),
                 TI.execution_date == run.execution_date,
+                ~TI.expired
             ).all()
-            if len(task_instances) == len(self.active_tasks):
+            if len(task_instances) >= len(self.active_tasks):
+                # yiqing: since we pre create all task_instances
+                # now this check is not necessary any more
                 task_states = [ti.state for ti in task_instances]
                 if State.FAILED in task_states:
                     self.logger.info('Marking run {} failed'.format(run))
@@ -2879,6 +2938,9 @@ class DagRun(Base):
     run_id = Column(String(ID_LEN))
     external_trigger = Column(Boolean, default=True)
     conf = Column(PickleType)
+    # yiqing: new columns
+    version = Column(Integer, default=0)  # version of dag run, used for re-run
+    queue = Column(String(50)) # if specified, overwrites default in code.
 
     __table_args__ = (
         Index('dr_run_id', dag_id, run_id, unique=True),
