@@ -141,6 +141,10 @@ base_log_folder = {AIRFLOW_HOME}/logs
 # For S3, use the full URL to the base folder (starting with "s3://...")
 s3_log_folder = None
 
+
+# The folder where airflow should store remote dag git repo
+git_repo_folder = /var/tmp/airflow/git/
+
 # The executor class that airflow should use. Choices include
 # SequentialExecutor, LocalExecutor, CeleryExecutor
 executor = SequentialExecutor

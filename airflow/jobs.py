@@ -16,6 +16,9 @@ import subprocess
 import sys
 from time import sleep
 
+from git import Remote, Repo, FetchInfo
+import os
+
 from sqlalchemy import Column, Integer, String, DateTime, func, Index, or_
 from sqlalchemy.orm.session import make_transient
 
@@ -627,10 +630,9 @@ class SchedulerJob(BaseJob):
 
                 i += 1
                 try:
+                    dagbag.collect_remote_dags(only_if_updated=True)
                     if i % self.refresh_dags_every == 0:
-                        dagbag = models.DagBag(self.subdir, sync_to_db=True)
-                    else:
-                        dagbag.collect_dags(only_if_updated=True)
+                        dagbag.deactivate_inactive_dags()
                 except:
                     self.logger.error("Failed at reloading the dagbag")
                     Stats.incr('dag_refresh_error', 1, 1)
@@ -902,3 +904,63 @@ class LocalTaskJob(BaseJob):
                 "Taking the poison pill. So long.".format(**locals()))
             self.process.terminate()
     """
+
+
+class DagSyncJob(BaseJob):
+    """A DagSyncJob keeps local dag folder up to date if dag is managed by git.
+    """
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'DagSyncJob'
+    }
+
+    def __init__(self, num_runs=None, *args, **kwargs):
+        self.num_runs = num_runs
+
+        super(DagSyncJob, self).__init__(*args, **kwargs)
+        pass
+
+    def _execute(self):
+        session = settings.Session()
+        i = 0
+        while not self.num_runs or self.num_runs > i:
+            i += 1
+            self.logger.info('Sync remote dags')
+            self.update_repo(session)
+            try:
+                self.heartbeat()
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.error("DagSyncJob heartbeat failed!")
+        session.commit()
+        session.close()
+
+    def update_repo(self, session):
+
+        DagBagModel = models.DagBagModel
+        for bag in session.query(DagBagModel):
+            try:
+                path = os.path.join('/var/tmp/airflow/git', bag.name)
+                if not os.path.exists(path):
+                    self.logger.info('cloning repo from {}'.format(bag.url))
+                    repo = Repo.clone_from(bag.url, path)
+                else:
+                    repo = Repo(path)
+                self.logger.info('updating repo from {}'.format(bag.url))
+                remote = Remote(repo, 'origin')
+                infos = remote.pull()
+                for info in infos:
+                    if not info.name.split('/')[1] == bag.branch:
+                        continue
+                    if not (info.flags | FetchInfo.HEAD_UPTODATE):
+                        print('dag changed!')
+                    else:
+                        print('resting...')
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.error('DagSyncJob failed!')
+
+
+if __name__ == '__main__':
+    job = DagSyncJob()
+    job.run()

@@ -25,6 +25,7 @@ import socket
 import sys
 import traceback
 from urllib.parse import urlparse
+from git import Repo, Remote, FetchInfo
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
@@ -123,7 +124,7 @@ class DagBag(LoggingMixin):
             sync_to_db=False):
 
         dag_folder = dag_folder or DAGS_FOLDER
-        self.logger.info("Filling up the DagBag from {}".format(dag_folder))
+
         self.dag_folder = dag_folder
         self.dags = {}
         self.sync_to_db = sync_to_db
@@ -137,6 +138,7 @@ class DagBag(LoggingMixin):
             self.collect_dags(example_dag_folder)
         self.collect_dags(dag_folder)
         if sync_to_db:
+            self.collect_remote_dags(only_if_updated=False)
             self.deactivate_inactive_dags()
 
     def size(self):
@@ -150,28 +152,28 @@ class DagBag(LoggingMixin):
         Gets the DAG out of the dictionary, and refreshes it if expired
         """
         # If asking for a known subdag, we want to refresh the parent
-        root_dag_id = dag_id
-        if dag_id in self.dags:
-            dag = self.dags[dag_id]
-            if dag.is_subdag:
-                root_dag_id = dag.parent_dag.dag_id
-
-        # If the root_dag_id is absent or expired
-        orm_dag = DagModel.get_current(root_dag_id)
-        if orm_dag and (
-                root_dag_id not in self.dags or (
-                    dag.last_loaded < (
-                    orm_dag.last_expired or datetime(2100, 1, 1)
-                )
-        )):
-            # Reprocessing source file
-            found_dags = self.process_file(
-                filepath=orm_dag.fileloc, only_if_updated=False)
-
-            if found_dags and dag_id in [dag.dag_id for dag in found_dags]:
-                return self.dags[dag_id]
-            elif dag_id in self.dags:
-                del self.dags[dag_id]
+        # root_dag_id = dag_id
+        # if dag_id in self.dags:
+        #     dag = self.dags[dag_id]
+        #     if dag.is_subdag:
+        #         root_dag_id = dag.parent_dag.dag_id
+        #
+        # # If the root_dag_id is absent or expired
+        # orm_dag = DagModel.get_current(root_dag_id)
+        # if orm_dag and (
+        #         root_dag_id not in self.dags or (
+        #             dag.last_loaded < (
+        #             orm_dag.last_expired or datetime(2100, 1, 1)
+        #         )
+        # )):
+        #     # Reprocessing source file
+        #     found_dags = self.process_file(
+        #         filepath=orm_dag.fileloc, only_if_updated=False)
+        #
+        #     if found_dags and dag_id in [dag.dag_id for dag in found_dags]:
+        #         return self.dags[dag_id]
+        #     elif dag_id in self.dags:
+        #         del self.dags[dag_id]
         return self.dags.get(dag_id)
 
     def process_file(self, filepath, only_if_updated=True, safe_mode=True):
@@ -201,7 +203,8 @@ class DagBag(LoggingMixin):
                     filepath not in self.file_last_changed or
                     dttm != self.file_last_changed[filepath]):
             try:
-                self.logger.info("Importing " + filepath)
+                self.logger.info(
+                    "Importing {}, only_if_updated={}".format(filepath, only_if_updated))
                 if mod_name in sys.modules:
                     del sys.modules[mod_name]
                 with utils.timeout(
@@ -318,6 +321,7 @@ class DagBag(LoggingMixin):
             self,
             dag_folder=None,
             only_if_updated=True):
+        self.logger.info("Filling up the DagBag from {}".format(dag_folder))
         """
         Given a file path or a folder, this method looks for python modules,
         imports them and adds them to the dagbag collection.
@@ -353,6 +357,33 @@ class DagBag(LoggingMixin):
                                 filepath, only_if_updated=only_if_updated)
                     except Exception as e:
                         logging.warning(e)
+
+    def collect_remote_dags(self, only_if_updated=True):
+        """Collection dags from git repo and
+        """
+        session = settings.Session()
+        for bag in session.query(DagBagModel):
+            try:
+                path = os.path.join('/var/tmp/airflow/git', bag.name)
+                if not os.path.exists(path):
+                    self.logger.info('cloning repo from {}'.format(bag.url))
+                    repo = Repo.clone_from(bag.url, path)
+                else:
+                    repo = Repo(path)
+                self.logger.info('updating repo from {}'.format(bag.url))
+                remote = Remote(repo, 'origin')
+                infos = remote.pull()
+                for info in infos:
+                    if not info.name.split('/')[1] == bag.branch:
+                        continue
+                    if not (info.flags & FetchInfo.HEAD_UPTODATE) or not only_if_updated:
+                        base_dir = configuration.get('core', 'GIT_REPO_FOLDER')
+                        dag_folder = os.path.join(base_dir, bag.name, bag.folder)
+                        self.collect_dags(dag_folder, only_if_updated=only_if_updated)
+
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.error('dag collection failed!')
 
     def deactivate_inactive_dags(self):
         active_dag_ids = [dag.dag_id for dag in list(self.dags.values())]
@@ -3038,3 +3069,16 @@ class ImportError(Base):
     timestamp = Column(DateTime)
     filename = Column(String(1024))
     stacktrace = Column(Text)
+
+
+class DagBagModel(Base):
+    __tablename__ = 'dagbag'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    url = Column(String(1000), nullable=False)
+    branch = Column(String(1000), nullable=False)
+    folder = Column(String(1000), nullable=False)
+    description = Column(TEXT, nullable=True)
+
+# do we need plugin auto updated? if so also need a plugin table here.
