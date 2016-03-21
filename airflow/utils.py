@@ -15,6 +15,7 @@ from email.mime.application import MIMEApplication
 import errno
 from functools import wraps
 import imp
+import importlib
 import inspect
 import json
 import logging
@@ -265,6 +266,14 @@ def initdb():
 
     models.DagBag(sync_to_db=True)
 
+    dag_bag = models.DagBagModel()
+    dag_bag.url = 'git@github.geo.apple.com:yiqing-jin/openflow.git'
+    dag_bag.branch = 'master'
+    dag_bag.name = 'test'
+    dag_bag.folder = 'openflow/dags'
+    session.add(dag_bag)
+    session.commit()
+
     Chart = models.Chart
     chart_label = "Airflow task instance by type"
     chart = session.query(Chart).filter(Chart.label == chart_label).first()
@@ -495,6 +504,16 @@ def ask_yesno(question):
 
 def send_email(to, subject, html_content, files=None, dryrun=False):
     """
+    Send email using backend specified in EMAIL_BACKEND.
+    """
+    path, attr = configuration.get('email', 'EMAIL_BACKEND').rsplit('.', 1)
+    module = importlib.import_module(path)
+    backend = getattr(module, attr)
+    return backend(to, subject, html_content, files=files, dryrun=dryrun)
+
+
+def send_email_smtp(to, subject, html_content, files=None, dryrun=False):
+    """
     Send an email with html content
 
     >>> send_email('test@example.com', 'foo', '<b>Foo</b> bar', ['/dev/null'], dryrun=True)
@@ -534,9 +553,10 @@ def send_MIME_email(e_from, e_to, mime_msg, dryrun=False):
     SMTP_USER = configuration.get('smtp', 'SMTP_USER')
     SMTP_PASSWORD = configuration.get('smtp', 'SMTP_PASSWORD')
     SMTP_STARTTLS = configuration.getboolean('smtp', 'SMTP_STARTTLS')
+    SMTP_SSL = configuration.getboolean('smtp', 'SMTP_SSL')
 
     if not dryrun:
-        s = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        s = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) if SMTP_SSL else smtplib.SMTP(SMTP_HOST, SMTP_PORT)
         if SMTP_STARTTLS:
             s.starttls()
         if SMTP_USER and SMTP_PASSWORD:
@@ -617,11 +637,19 @@ class timeout(object):
         raise AirflowTaskTimeout(self.error_message)
 
     def __enter__(self):
-        signal.signal(signal.SIGALRM, self.handle_timeout)
-        signal.alarm(self.seconds)
+        try:
+            signal.signal(signal.SIGALRM, self.handle_timeout)
+            signal.alarm(self.seconds)
+        except ValueError as e:
+            logging.warning("timeout can't be used in the current context")
+            logging.exception(e)
 
     def __exit__(self, type, value, traceback):
-        signal.alarm(0)
+        try:
+            signal.alarm(0)
+        except ValueError as e:
+            logging.warning("timeout can't be used in the current context")
+            logging.exception(e)
 
 
 def is_container(obj):

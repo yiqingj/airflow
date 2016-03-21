@@ -154,13 +154,30 @@ variables and connections.
 
 Scaling Out with Celery
 '''''''''''''''''''''''
-CeleryExecutor is the way you can scale out the number of workers. For this
+``CeleryExecutor`` is one of the ways you can scale out the number of workers. For this
 to work, you need to setup a Celery backend (**RabbitMQ**, **Redis**, ...) and
 change your ``airflow.cfg`` to point the executor parameter to
-CeleryExecutor and provide the related Celery settings.
+``CeleryExecutor`` and provide the related Celery settings.
 
 For more information about setting up a Celery broker, refer to the
 exhaustive `Celery documentation on the topic <http://docs.celeryproject.org/en/latest/getting-started/brokers/index.html>`_.
+
+Here are a few imperative requirements for your workers:
+
+- ``airflow`` needs to be installed, and the CLI needs to be in the path
+- Airflow configuration settings should be homogeneous across the cluster
+- Operators that are executed on the worker need to have their dependencies
+  met in that context. For example, if you use the ``HiveOperator``,
+  the hive CLI needs to be installed on that box, or if you use the
+  ``MySqlOperator``, the required Python library needs to be available in
+  the ``PYTHONPATH`` somehow
+- The worker needs to have access to its ``DAGS_FOLDER``, and you need to
+  synchronize the filesystems by your own mean. A common setup would be to
+  store your DAGS_FOLDER in a Git repository and sync it across machines using
+  Chef, Puppet, Ansible, or whatever you use to configure machines in your
+  environment. If all your boxes have a common mount point, having your
+  pipelines files shared there should work as well
+
 
 To kick off a worker, you need to setup Airflow and kick off the worker
 subcommand
@@ -173,13 +190,19 @@ Your worker should start picking up tasks as soon as they get fired in
 its direction.
 
 Note that you can also run "Celery Flower", a web UI built on top of Celery,
-to monitor your workers.
+to monitor your workers. You can use the shortcut command ``airflow flower``
+to start a Flower web server.
+
 
 Logs
 ''''
-Users can specify a logs folder in ``airflow.cfg``. By default, it is in the ``AIRFLOW_HOME`` directory.
+Users can specify a logs folder in ``airflow.cfg``. By default, it is in
+the ``AIRFLOW_HOME`` directory.
 
-In addition, users can supply an S3 location for storing log backups. If logs are not found in the local filesystem (for example, if a worker is lost or reset), the S3 logs will be displayed in the Airflow UI. Note that logs are only sent to S3 once a task completes (including failure).
+In addition, users can supply an S3 location for storing log backups. If
+logs are not found in the local filesystem (for example, if a worker is
+lost or reset), the S3 logs will be displayed in the Airflow UI. Note that
+logs are only sent to S3 once a task completes (including failure).
 
 .. code-block:: bash
 
@@ -189,49 +212,70 @@ In addition, users can supply an S3 location for storing log backups. If logs ar
 
 Scaling Out on Mesos (community contributed)
 ''''''''''''''''''''''''''''''''''''''''''''
-MesosExecutor allows you to schedule airflow tasks on a Mesos cluster.
-For this to work, you need a running mesos cluster and perform following
+``MesosExecutor`` allows you to schedule airflow tasks on a Mesos cluster.
+For this to work, you need a running mesos cluster and you must perform the following
 steps -
 
-1. Install airflow on a machine where webserver and scheduler will run,
-   let's refer this as Airflow server.
-2. On Airflow server, install mesos python eggs from `mesos downloads <http://open.mesosphere.com/downloads/mesos/>`_.
-3. On Airflow server, use a database which can be accessed from mesos
-   slave machines, for example mysql, and configure in ``airflow.cfg``.
+1. Install airflow on a machine where web server and scheduler will run,
+   let's refer to this as the "Airflow server".
+2. On the Airflow server, install mesos python eggs from `mesos downloads <http://open.mesosphere.com/downloads/mesos/>`_.
+3. On the Airflow server, use a database (such as mysql) which can be accessed from mesos
+   slave machines and add configuration in ``airflow.cfg``.
 4. Change your ``airflow.cfg`` to point executor parameter to
-   MesosExecutor and provide related Mesos settings.
+   `MesosExecutor` and provide related Mesos settings.
 5. On all mesos slaves, install airflow. Copy the ``airflow.cfg`` from
    Airflow server (so that it uses same sql alchemy connection).
-6. On all mesos slaves, run
+6. On all mesos slaves, run the following for serving logs:
 
 .. code-block:: bash
 
     airflow serve_logs
 
-for serving logs.
-
-7. On Airflow server, run
+7. On Airflow server, to start processing/scheduling DAGs on mesos, run:
 
 .. code-block:: bash
 
     airflow scheduler -p
 
-to start processing DAGs and scheduling them on mesos. We need -p parameter to pickle the DAGs.
+Note: We need -p parameter to pickle the DAGs.
 
 You can now see the airflow framework and corresponding tasks in mesos UI.
 The logs for airflow tasks can be seen in airflow UI as usual.
 
-For more information about mesos, refer `mesos documentation <http://mesos.apache.org/documentation/latest/>`_.
-For any queries/bugs on MesosExecutor, please contact `@kapil-malik <https://github.com/kapil-malik>`_.
+For more information about mesos, refer to `mesos documentation <http://mesos.apache.org/documentation/latest/>`_.
+For any queries/bugs on `MesosExecutor`, please contact `@kapil-malik <https://github.com/kapil-malik>`_.
 
 Integration with systemd
 ''''''''''''''''''''''''
-Airflow can integrate with systemd based systems. This makes watching your daemons easy as systemd
-can take care restarting a daemon on failure. In the ``scripts/systemd`` directory you can find unit files that
-have been tested on Redhat based systems. You can copy those ``/usr/lib/systemd/system``. It is assumed that
-Airflow will run under ``airflow:airflow``. If not (or if you are running on a non Redhat based system) you
-probably need adjust the unit files.
+Airflow can integrate with systemd based systems. This makes watching your
+daemons easy as systemd can take care of restarting a daemon on failure.
+In the ``scripts/systemd`` directory you can find unit files that
+have been tested on Redhat based systems. You can copy those to
+``/usr/lib/systemd/system``. It is assumed that Airflow will run under
+``airflow:airflow``. If not (or if you are running on a non Redhat
+based system) you probably need to adjust the unit files.
 
-Environment configuration is picked up from ``/etc/sysconfig/airflow``. An example file is supplied
- . Make sure to specify the ``SCHEDULER_RUNS`` variable in this file when you run the schduler. You
- can also define here, for example, ``AIRFLOW_HOME`` or ``AIRFLOW_CONFIG``.
+Environment configuration is picked up from ``/etc/sysconfig/airflow``.
+An example file is supplied. Make sure to specify the ``SCHEDULER_RUNS``
+variable in this file when you run the scheduler. You
+can also define here, for example, ``AIRFLOW_HOME`` or ``AIRFLOW_CONFIG``.
+
+Integration with upstart
+''''''''''''''''''''''''
+Airflow can integrate with upstart based systems. Upstart automatically starts all airflow services for which you
+have a corresponding *.conf file in ``/etc/init`` upon system boot. On failure, upstart automatically restarts
+the process (until it reaches re-spawn limit set in a *.conf file).
+
+You can find sample upstart job files in the ``scripts/upstart`` directory. These files have been tested on
+Ubuntu 14.04 LTS. You may have to adjust ``start on`` and ``stop on`` stanzas to make it work on other upstart
+systems. Some of the possible options are listed in ``scripts/upstart/README``.
+
+Modify *.conf files as needed and copy to ``/etc/init`` directory. It is assumed that airflow will run
+under ``airflow:airflow``. Change ``setuid`` and ``setgid`` in *.conf files if you use other user/group
+
+You can use ``initctl`` to manually start, stop, view status of the airflow process that has been
+integrated with upstart
+
+.. code-block:: bash
+
+    initctl airflow-webserver status

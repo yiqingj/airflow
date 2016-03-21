@@ -9,12 +9,13 @@ from datetime import datetime
 from builtins import input
 import argparse
 import dateutil.parser
+import json
 
 import airflow
 from airflow import jobs, settings, utils
 from airflow import configuration
 from airflow.executors import DEFAULT_EXECUTOR
-from airflow.models import DagBag, TaskInstance, DagPickle, DagRun
+from airflow.models import DagModel, DagBag, TaskInstance, DagPickle, DagRun
 from airflow.utils import AirflowException, State
 
 DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'DAGS_FOLDER'))
@@ -86,14 +87,12 @@ def trigger_dag(args):
     # TODO: verify dag_id
     execution_date = datetime.now()
     run_id = args.run_id or "manual__{0}".format(execution_date.isoformat())
-    variables = {}
-    if args.variables:
-        for var in args.variables:
-            k, v = var.split('=')
-            variables[k] = v
-
     dr = session.query(DagRun).filter(
         DagRun.dag_id==args.dag_id, DagRun.run_id==run_id).first()
+
+    conf = {}
+    if args.conf:
+        conf = json.loads(args.conf)
     if dr:
         logging.error("This run_id already exists")
     else:
@@ -102,11 +101,35 @@ def trigger_dag(args):
             run_id=run_id,
             execution_date=execution_date,
             state=State.RUNNING,
-            external_trigger=True,
-            conf=variables)
+            conf=conf,
+            external_trigger=True)
         session.add(trigger)
         logging.info("Created {}".format(trigger))
     session.commit()
+
+
+def pause(args):
+    set_is_paused(True, args)
+
+
+def unpause(args):
+    set_is_paused(False, args)
+
+
+def set_is_paused(is_paused, args):
+    dagbag = DagBag(process_subdir(args.subdir))
+    if args.dag_id not in dagbag.dags:
+        raise AirflowException('dag_id could not be found')
+    dag = dagbag.dags[args.dag_id]
+
+    session = settings.Session()
+    dm = session.query(DagModel).filter(
+        DagModel.dag_id == dag.dag_id).first()
+    dm.is_paused = is_paused
+    session.commit()
+
+    msg = "Dag: {}, paused: {}".format(dag, str(dag.is_paused))
+    print(msg)
 
 
 def run(args):
@@ -205,7 +228,8 @@ def run(args):
             mark_success=args.mark_success,
             pickle_id=pickle_id,
             ignore_dependencies=args.ignore_dependencies,
-            force=args.force)
+            force=args.force,
+            pool=args.pool)
         executor.heartbeat()
         executor.end()
 
@@ -280,6 +304,10 @@ def test(args):
         raise AirflowException('dag_id could not be found')
     dag = dagbag.dags[args.dag_id]
     task = dag.get_task(task_id=args.task_id)
+    # Add CLI provided task_params to task.params
+    if args.task_params:
+        passed_in_params = json.loads(args.task_params)
+        task.params.update(passed_in_params)
     ti = TaskInstance(task, args.execution_date)
 
     if args.dry_run:
@@ -542,10 +570,25 @@ def get_parser():
     parser_trigger_dag.add_argument(
         "-r", "--run_id",
         help="Helps to indentify this run")
-    parser_trigger_dag.add_argument("-v","--variables", nargs="*",
-                                    help="environment variables for this dag run, this overwrites"
-                                         " the default environments setting.")
+    ht = "json string that gets pickled into the DagRun's conf attribute"
+    parser_trigger_dag.add_argument('-c', '--conf', help=ht)
     parser_trigger_dag.set_defaults(func=trigger_dag)
+
+    ht = "Pause a DAG"
+    parser_pause = subparsers.add_parser('pause', help=ht)
+    parser_pause.add_argument("dag_id", help="The id of the dag to pause")
+    parser_pause.add_argument(
+        "-sd", "--subdir", help=subdir_help,
+        default=DAGS_FOLDER)
+    parser_pause.set_defaults(func=pause)
+
+    ht = "Unpause a DAG"
+    parser_unpause = subparsers.add_parser('unpause', help=ht)
+    parser_unpause.add_argument("dag_id", help="The id of the dag to unpause")
+    parser_unpause.add_argument(
+        "-sd", "--subdir", help=subdir_help,
+        default=DAGS_FOLDER)
+    parser_unpause.set_defaults(func=unpause)
 
     ht = "Run a single task instance"
     parser_run = subparsers.add_parser('run', help=ht)
@@ -604,6 +647,8 @@ def get_parser():
         default=DAGS_FOLDER)
     parser_test.add_argument(
         "-dr", "--dry_run", help="Perform a dry run", action="store_true")
+    parser_test.add_argument(
+        "-tp", "--task_params", help="Sends a JSON params dict to the task")
     parser_test.set_defaults(func=test)
 
     ht = "Get the status of a task instance."

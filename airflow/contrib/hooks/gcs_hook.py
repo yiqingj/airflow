@@ -4,6 +4,7 @@ import logging
 from airflow.contrib.hooks.gc_base_hook import GoogleCloudBaseHook
 from airflow.hooks.base_hook import BaseHook
 from apiclient.discovery import build
+from apiclient.http import MediaFileUpload
 from oauth2client.client import SignedJwtAssertionCredentials
 
 logging.getLogger("google_cloud_storage").setLevel(logging.INFO)
@@ -25,13 +26,16 @@ class GoogleCloudStorageHook(GoogleCloudBaseHook):
     """
     conn_name_attr = 'google_cloud_storage_conn_id'
 
-    def __init__(self, scope='https://www.googleapis.com/auth/devstorage.read_only', google_cloud_storage_conn_id='google_cloud_storage_default'):
+    def __init__(self,
+                 scope='https://www.googleapis.com/auth/devstorage.read_only',
+                 google_cloud_storage_conn_id='google_cloud_storage_default',
+                 delegate_to=None):
         """
         :param scope: The scope of the hook (read only, read write, etc). See:
             https://cloud.google.com/storage/docs/authentication?hl=en#oauth-scopes
         :type scope: string
         """
-        super(GoogleCloudStorageHook, self).__init__(scope, google_cloud_storage_conn_id)
+        super(GoogleCloudStorageHook, self).__init__(scope, google_cloud_storage_conn_id, delegate_to)
 
     def get_conn(self):
         """
@@ -63,3 +67,23 @@ class GoogleCloudStorageHook(GoogleCloudBaseHook):
                 file_fd.write(downloaded_file_bytes)
 
         return downloaded_file_bytes
+
+    def upload(self, bucket, object, filename, mime_type='application/octet-stream'):
+        """
+        Uploads a local file to Google Cloud Storage.
+
+        :param bucket: The bucket to upload to.
+        :type bucket: string
+        :param object: The object name to set when uploading the local file.
+        :type object: string
+        :param filename: The local file path to the file to be uploaded.
+        :type filename: string
+        :param mime_type: The MIME type to set when uploading the file.
+        :type mime_type: string
+        """
+        service = self.get_conn()
+        media = MediaFileUpload(filename, mime_type)
+        response = service \
+            .objects() \
+            .insert(bucket=bucket, name=object, media_body=media) \
+            .execute()

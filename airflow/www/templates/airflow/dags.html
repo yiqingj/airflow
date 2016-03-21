@@ -20,7 +20,8 @@
                 <th>DAG</th>
                 <th>Schedule</th>
                 <th>Owner</th>
-                <th style="padding-left: 5px;">Statuses
+                <th style="padding-left: 5px;">Recent Statuses
+                  <span id="statuses_info" class="glyphicon glyphicon-info-sign" aria-hidden="true" title="Status of tasks from all active DAG runs or, if not currently active, from most recent run."></span>
                   <img id="loading" width="15" src="{{ url_for("static", filename="loading.gif") }}">
                 </th>
                 <th class="text-center">Links</th>
@@ -60,7 +61,7 @@
                       {{ dag.schedule_interval }}</a></td>
                 <td>{{ dag.owner if dag else orm_dags[dag_id].owners }}</td>
                 <td style="padding:0px; width:200px; height:10px;">
-                    <svg height="10" width="10" id='{{ dag.safe_dag_id }}' style="display: block;"></svg>
+                    <svg height="10" width="10" id='dag-{{ dag.safe_dag_id }}' style="display: block;"></svg>
                 </td>
                 <td class="text-center" style="width:160px;"><nobr>
                 {% if dag %}
@@ -130,18 +131,19 @@
       stroke_width_hover = 6;
       d3.json("{{ url_for('airflow.blocked') }}", function(error, json) {
         $.each(json, function() {
+          $('.label.schedule.' + this.dag_id)
+          .attr('title', this.active_dag_run + '/' + this.max_active_runs + ' active dag runs')
+          .tooltip();
           if(this.active_dag_run >= this.max_active_runs) {
             $('.label.schedule.' + this.dag_id)
-            .css('background-color', 'red')
-            .attr("title", "Number of active DAG runs (" + this.active_dag_run + ") has been reached")
-            .tooltip();
+            .css('background-color', 'red');
           }
         });
       });
       d3.json("{{ url_for('airflow.dag_stats') }}", function(error, json) {
         for(var dag_id in json) {
             states = json[dag_id];
-            g = d3.select('svg#' + dag_id)
+            g = d3.select('svg#dag-' + dag_id)
               .attr('height', diameter + (stroke_width_hover * 2))
               .attr('width', '180px')
               .selectAll("g")
@@ -210,6 +212,7 @@
             d3.select("#loading").remove();
         }
         $("#pause_header").tooltip();
+        $("#statuses_info").tooltip();
 
         $("circle").tooltip({
           html: true,

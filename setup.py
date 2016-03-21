@@ -53,6 +53,14 @@ doc = [
 ]
 docker = ['docker-py>=1.6.0']
 druid = ['pydruid>=0.2.1']
+gcloud = [
+    'gcloud>=1.1.0',
+]
+gcp_api = [
+    'httplib2',
+    'google-api-python-client',
+    'oauth2client>=1.5.2, <2.0.0',
+]
 hdfs = ['snakebite>=2.4.13']
 webhdfs = ['hdfs[dataframe,avro,kerberos]>=2.0.4']
 hive = [
@@ -71,11 +79,10 @@ s3 = [
     'filechunkio>=1.6',
 ]
 samba = ['pysmbclient>=0.1.3']
-slack = ['slackclient>=0.15']
+slack = ['slackclient>=1.0.0']
 statsd = ['statsd>=3.0.1, <4.0']
 vertica = ['vertica-python>=0.5.1']
 ldap = ['ldap3>=0.9.9.1']
-devel = ['lxml>=3.3.4']
 kerberos = ['pykerberos>=1.1.8']
 password = [
     'bcrypt>=2.0.0',
@@ -85,7 +92,8 @@ github_enterprise = ['Flask-OAuthlib>=0.9.1']
 qds = ['qds-sdk>=1.9.0']
 
 all_dbs = postgres + mysql + hive + mssql + hdfs + vertica
-devel = all_dbs + doc + samba + s3 + ['nose'] + slack + crypto + oracle + docker
+devel = ['lxml>=3.3.4', 'nose', 'mock']
+devel += all_dbs + doc + samba + s3 + slack + crypto + oracle + docker
 
 setup(
     name='airflow',
@@ -129,6 +137,8 @@ setup(
         'doc': doc,
         'docker': docker,
         'druid': druid,
+        'gcloud': gcloud,
+        'gcp_api': gcp_api,
         'hdfs': hdfs,
         'hive': hive,
         'jdbc': jdbc,

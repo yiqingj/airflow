@@ -75,6 +75,10 @@ defaults = {
         'dag_concurrency': 16,
         'max_active_runs_per_dag': 16,
         'executor': 'SequentialExecutor',
+        'dags_are_paused_at_creation': False,
+        'sql_alchemy_pool_size': 5,
+        'sql_alchemy_pool_recycle': 3600,
+        'dagbag_import_timeout': 30,
     },
     'webserver': {
         'base_url': 'http://localhost:8080',
@@ -101,8 +105,12 @@ defaults = {
         'default_queue': 'default',
         'flower_port': '5555'
     },
+    'email': {
+        'email_backend': 'airflow.utils.send_email_smtp',
+    },
     'smtp': {
         'smtp_starttls': True,
+        'smtp_ssl': False,
         'smtp_user': '',
         'smtp_password': '',
     },
@@ -133,6 +141,10 @@ base_log_folder = {AIRFLOW_HOME}/logs
 # For S3, use the full URL to the base folder (starting with "s3://...")
 s3_log_folder = None
 
+
+# The folder where airflow should store remote dag git repo
+git_repo_folder = /var/tmp/airflow/git/
+
 # The executor class that airflow should use. Choices include
 # SequentialExecutor, LocalExecutor, CeleryExecutor
 executor = SequentialExecutor
@@ -142,6 +154,15 @@ executor = SequentialExecutor
 # their website
 sql_alchemy_conn = sqlite:///{AIRFLOW_HOME}/airflow.db
 
+# The SqlAlchemy pool size is the maximum number of database connections
+# in the pool.
+sql_alchemy_pool_size = 5
+
+# The SqlAlchemy pool recycle is the number of seconds a connection
+# can be idle in the pool before it is invalidated. This config does
+# not apply to sqlite.
+sql_alchemy_pool_recycle = 3600
+
 # The amount of parallelism as a setting to the executor. This defines
 # the max number of task instances that should run simultaneously
 # on this airflow installation
@@ -149,6 +170,9 @@ parallelism = 32
 
 # The number of task instances allowed to run concurrently by the scheduler
 dag_concurrency = 16
+
+# Are DAGs paused by default at creation
+dags_are_paused_at_creation = False
 
 # The maximum number of active DAG runs per DAG
 max_active_runs_per_dag = 16
@@ -166,6 +190,9 @@ fernet_key = {FERNET_KEY}
 
 # Whether to disable pickling dags
 donot_pickle = False
+
+# How long before timing out a python file import while filling the DagBag
+dagbag_import_timeout = 30
 
 [webserver]
 # The base url of your website as airflow cannot guess what domain or
@@ -198,12 +225,16 @@ authenticate = False
 # Filter the list of dags by owner name (requires authentication to be enabled)
 filter_by_owner = False
 
+[email]
+email_backend = airflow.utils.send_email_smtp
+
 [smtp]
 # If you want airflow to send emails on retries, failure, and you want to
 # the airflow.utils.send_email function, you have to configure an smtp
 # server here
 smtp_host = localhost
 smtp_starttls = True
+smtp_ssl = False
 smtp_user = airflow
 smtp_port = 25
 smtp_password = airflow
@@ -309,12 +340,16 @@ unit_test_mode = True
 load_examples = True
 donot_pickle = False
 dag_concurrency = 16
+dags_are_paused_at_creation = False
 fernet_key = {FERNET_KEY}
 
 [webserver]
 base_url = http://localhost:8080
 web_server_host = 0.0.0.0
 web_server_port = 8080
+
+[email]
+email_backend = airflow.utils.send_email_smtp
 
 [smtp]
 smtp_host = localhost
@@ -379,7 +414,7 @@ class ConfigParserWithDefaults(ConfigParser):
         elif self.has_option(section, key):
             return expand_env_var(ConfigParser.get(self, section, key, **kwargs))
 
-        elif ((section, key) in ConfigParserWithDefaults.as_command_stdout 
+        elif ((section, key) in ConfigParserWithDefaults.as_command_stdout
             and self.has_option(section, fallback_key)):
             command = self.get(section, fallback_key)
             return run_command(command)
@@ -514,4 +549,3 @@ def set(section, option, value):
 
 def get_dags_folder():
     return os.path.expanduser(get('core', 'DAGS_FOLDER'))
-
