@@ -4,8 +4,8 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 from future import standard_library
-
 standard_library.install_aliases()
+
 from builtins import str
 from configparser import ConfigParser
 import errno
@@ -13,9 +13,13 @@ import logging
 import os
 import subprocess
 
+
+class AirflowConfigException(Exception):
+    pass
+
 try:
     from cryptography.fernet import Fernet
-except:
+except ImportError:
     pass
 
 
@@ -42,6 +46,7 @@ def expand_env_var(env_var):
         else:
             env_var = interpolated
 
+
 def run_command(command):
     """
     Runs command and returns stdout
@@ -51,16 +56,13 @@ def run_command(command):
     output, stderr = process.communicate()
 
     if process.returncode != 0:
-        raise AirflowException(
+        raise AirflowConfigException(
             "Cannot execute {}. Error code is: {}. Output: {}, Stderr: {}"
-            .format(cmd, process.returncode, output, stderr)
+            .format(command, process.returncode, output, stderr)
         )
 
     return output
 
-
-class AirflowConfigException(Exception):
-    pass
 
 defaults = {
     'core': {
@@ -70,8 +72,10 @@ defaults = {
         'plugins_folder': None,
         'security': None,
         'donot_pickle': False,
-        's3_log_folder': '',
+        'remote_base_log_folder': '',
+        'remote_log_conn_id': '',
         'encrypt_s3_logs': False,
+        's3_log_folder': '', # deprecated!
         'dag_concurrency': 16,
         'max_active_runs_per_dag': 16,
         'executor': 'SequentialExecutor',
@@ -137,9 +141,17 @@ dags_folder = {AIRFLOW_HOME}/dags
 
 # The folder where airflow should store its log files. This location
 base_log_folder = {AIRFLOW_HOME}/logs
-# An S3 location can be provided for log backups
-# For S3, use the full URL to the base folder (starting with "s3://...")
-s3_log_folder = None
+
+# Airflow can store logs remotely in AWS S3 or Google Cloud Storage. Users
+# must supply a remote location URL (starting with either 's3://...' or
+# 'gs://...') and an Airflow connection id that provides access to the storage
+# location.
+remote_base_log_folder = None
+remote_log_conn_id = None
+# Use server-side encryption for logs stored in S3
+encrypt_s3_logs = False
+# deprecated option for remote log storage, use remote_base_log_folder instead!
+# s3_log_folder = None
 
 
 # The folder where airflow should store remote dag git repo
@@ -196,7 +208,7 @@ dagbag_import_timeout = 30
 
 [webserver]
 # The base url of your website as airflow cannot guess what domain or
-# cname you are using. This is use in automated emails that
+# cname you are using. This is used in automated emails that
 # airflow sends to point links to the right web server
 base_url = http://localhost:8080
 
@@ -219,7 +231,8 @@ worker_class = sync
 # Expose the configuration file in the web server
 expose_config = true
 
-# Set to true to turn on authentication : http://pythonhosted.org/airflow/installation.html#web-authentication
+# Set to true to turn on authentication:
+# http://pythonhosted.org/airflow/installation.html#web-authentication
 authenticate = False
 
 # Filter the list of dags by owner name (requires authentication to be enabled)
@@ -314,8 +327,10 @@ task_memory = 256
 checkpoint = False
 
 # Failover timeout in milliseconds.
-# When checkpointing is enabled and this option is set, Mesos waits until the configured timeout for
-# the MesosExecutor framework to re-register after a failover. Mesos shuts down running tasks if the
+# When checkpointing is enabled and this option is set, Mesos waits
+# until the configured timeout for
+# the MesosExecutor framework to re-register after a failover. Mesos
+# shuts down running tasks if the
 # MesosExecutor framework fails to re-register within this timeframe.
 # failover_timeout = 604800
 
@@ -391,10 +406,11 @@ class ConfigParserWithDefaults(ConfigParser):
         self.is_validated = False
 
     def _validate(self):
-        if self.get("core", "executor") != 'SequentialExecutor' \
-                and "sqlite" in self.get('core', 'sql_alchemy_conn'):
+        if (
+                self.get("core", "executor") != 'SequentialExecutor' and
+                "sqlite" in self.get('core', 'sql_alchemy_conn')):
             raise AirflowConfigException("error: cannot use sqlite with the {}".
-                                                       format(self.get('core', 'executor')))
+                format(self.get('core', 'executor')))
 
         self.is_validated = True
 
@@ -500,11 +516,9 @@ if not os.path.isfile(TEST_CONFIG_FILE):
         f.write(parameterized_config(TEST_CONFIG))
 
 if not os.path.isfile(AIRFLOW_CONFIG):
-    """
-    These configuration options are used to generate a default configuration
-    when it is missing. The right way to change your configuration is to alter
-    your configuration file, not this code.
-    """
+    # These configuration options are used to generate a default configuration
+    # when it is missing. The right way to change your configuration is to alter
+    # your configuration file, not this code.
     logging.info("Creating new airflow config file in: " + AIRFLOW_CONFIG)
     with open(AIRFLOW_CONFIG, 'w') as f:
         f.write(parameterized_config(DEFAULT_CONFIG))
@@ -541,7 +555,7 @@ def has_option(section, key):
 def remove_option(section, option):
     return conf.remove_option(section, option)
 
-def set(section, option, value):
+def set(section, option, value):  # noqa
     return conf.set(section, option, value)
 
 ########################
