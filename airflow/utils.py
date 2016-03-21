@@ -266,6 +266,14 @@ def initdb():
 
     models.DagBag(sync_to_db=True)
 
+    dag_bag = models.DagBagModel()
+    dag_bag.url = 'git@github.geo.apple.com:yiqing-jin/openflow.git'
+    dag_bag.branch = 'master'
+    dag_bag.name = 'test'
+    dag_bag.folder = 'openflow/dags'
+    session.add(dag_bag)
+    session.commit()
+
     Chart = models.Chart
     chart_label = "Airflow task instance by type"
     chart = session.query(Chart).filter(Chart.label == chart_label).first()

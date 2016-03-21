@@ -49,6 +49,7 @@ Base = declarative_base()
 ID_LEN = 250
 SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
 DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'DAGS_FOLDER'))
+REMOTE_DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'GIT_REPO_FOLDER'))
 XCOM_RETURN_KEY = 'return_value'
 
 ENCRYPTION_ON = False
@@ -359,10 +360,10 @@ class DagBag(LoggingMixin):
                         logging.warning(e)
 
     def collect_remote_dags(self, only_if_updated=True):
-        """Collection dags from git repo and
+        """Collection dags from git repo. in the future we might support more
         """
         session = settings.Session()
-        for bag in session.query(DagBagModel):
+        for bag in session.query(DagBagModel).filter(~DagBagModel.disabled):
             try:
                 path = os.path.join('/var/tmp/airflow/git', bag.name)
                 if not os.path.exists(path):
@@ -2279,6 +2280,7 @@ class DAG(LoggingMixin):
         File location of where the dag object is instantiated
         """
         fn = self.full_filepath.replace(DAGS_FOLDER + '/', '')
+        fn = fn.replace(REMOTE_DAGS_FOLDER + '/', '')
         fn = fn.replace(os.path.dirname(__file__) + '/', '')
         return fn
 
@@ -3079,6 +3081,7 @@ class DagBagModel(Base):
     url = Column(String(1000), nullable=False)
     branch = Column(String(1000), nullable=False)
     folder = Column(String(1000), nullable=False)
+    disabled = Column(Boolean, default=False)
     description = Column(TEXT, nullable=True)
 
 # do we need plugin auto updated? if so also need a plugin table here.

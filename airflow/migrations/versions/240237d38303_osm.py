@@ -42,6 +42,7 @@ def upgrade():
             sa.Column('url', sa.String(length=500), nullable=False),
             sa.Column('branch', sa.String(length=100), nullable=False),
             sa.Column('folder', sa.String(length=500), nullable=False),
+            sa.Column('disabled', sa.Boolean(), server_default='false'),
             sa.Column('description', sa.TEXT, nullable=True),
             sa.PrimaryKeyConstraint('id')
         )
