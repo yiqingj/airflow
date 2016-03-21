@@ -1,0 +1,44 @@
+<div *ngIf="dagRun">
+    <ol class="breadcrumb navbar-breadcrumb">
+        <li>Workflow</li>
+        <li>{{ dagRun.dagId}}</li>
+        <li class="active">New Pipeline Run</li>
+    </ol>
+    <form (ngSubmit)="onSubmit()" #dagRunForm="ngForm">
+        <div class="form-group">
+            <label for="dagName">DAG_NAME</label>
+            <input type="text" class="form-control" id="dagName" [ngModel]="dagRun.dagId"
+                   disabled>
+        </div>
+        <div class="form-group">
+            <label for="runId">RUN_ID</label>
+            <input type="text" class="form-control" id="runId" [(ngModel)]="dagRun.runId" disabled>
+        </div>
+        <div class="form-group">
+            <label for="executionDate">Execution_Date</label>
+            <input type='text' class="form-control" id='executionDate' [(ngModel)]="dagRun.executionDate">
+        </div>
+
+        <div class="form-group">
+            <label for="release">TARGET_RELEASE</label>
+            <select class="form-control" id="release" required>
+                <option *ngFor="#r of releases" [(value)]="r.name">{{r.name}}</option>
+            </select>
+        </div>
+
+        <div class="form-group" *ngFor="#param of dagRun.params; #idx=index">
+            <label for="param">{{param.key}}</label>
+            <input type="text" class="form-control" id="param" [(ngModel)]="param.value">
+        </div>
+
+        <div class="form-group">
+            <label>Tasks</label>
+            <myDagRe [dagRun]="dagRun" [showLegend]="false" (onNodeClick)="onTaskClick($event)"></myDagRe>
+        </div>
+
+
+        <button type="submit" class="btn btn-default">Submit</button>
+        <button type="button" class="btn btn-default" (click)="cancel()">Cancel</button>
+    </form>
+</div>
+

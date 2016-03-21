@@ -1,0 +1,55 @@
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-8 col-sm-12">
+            <form class="form-inline pull-left">
+                <div class="form-group">
+                    <input type="text" class="form-control" id="query" [(ngModel)]="query.text"
+                           placeholder="search...">
+                </div>
+                <div class="form-group">
+                    <select class="form-control" id="category"
+                            [(ngModel)]="query.category">
+                        <option value="atlas">atlas</option>
+                        <option value="pbf">pbf</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-default">search</button>
+            </form>
+            <table class="table table-striped">
+                <thead>
+                <tr>
+                    <th>name</th>
+                    <th>type</th>
+                    <th>release</th>
+                    <th>url</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr *ngFor="#artifact of artifacts">
+                    <td>{{ artifact.name}}</td>
+                    <td>{{ artifact.type}}</td>
+                    <td>{{ artifact.release}}</td>
+                    <td>{{ artifact.url}}</td>
+                    <td>
+                        <button class="btn btn-default btn-xs" data-toggle="tooltip"
+                                data-placement="top" title="download artifact"><i
+                                class="fa fa-cloud-download"></i></button>
+                        <button class="btn btn-default btn-xs" data-toggle="tooltip"
+                                data-placement="top" title="copy url to clipboard"><i
+                                class="fa fa-clipboard"></i>
+                        </button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="col-md-4 col-sm-12">
+            <div id="map"></div>
+        </div>
+
+    </div>
+</div>
+
+
+

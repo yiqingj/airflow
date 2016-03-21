@@ -24,8 +24,11 @@ errors = {
 
 
 def create_app(object_name):
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path='')
     app.config.from_object(object_name)
+    @app.route('/')
+    def root():
+        return app.send_static_file('index.html')
 
     rest_api = Api(prefix='/api', errors=errors)
     rest_api.add_resource(DagRunApi, '/dagrun/<dag_id>/<execution_date>')

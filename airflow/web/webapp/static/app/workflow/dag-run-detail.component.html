@@ -1,0 +1,108 @@
+<ol class="breadcrumb navbar-breadcrumb">
+    <li>workflow</li>
+    <li>{{dagId}}</li>
+    <li class="active">{{executionDate}}</li>
+</ol>
+
+<div>
+    <button type="button" (click)="goBack()">Back</button>
+</div>
+
+<div *ngIf="dagRun" class="container-fluid">
+    <h3>{{dagRun.runId}} ({{dagRun.dagId}})</h3>
+    <div class="row">
+        <div class="col-md-2"><strong>Dag Name:&nbsp; </strong>{{ dagRun.dagId}}</div>
+        <div class="col-md-2"><strong>State:&nbsp;</strong>
+        <span class="label"
+              [ngClass]="{
+                                'label-success': dagRun.state=='success',
+                                'label-danger': dagRun.state=='failed',
+                                'label-default': dagRun.state == 'pending',
+                                'label-info': dagRun.state == 'running'}">
+                            {{dagRun.state}}</span>
+        </div>
+        <div class="col-md-2"><strong>Version:&nbsp;</strong>{{ dagRun.version}}</div>
+        <div class="col-md-4"><strong>Execution Date:&nbsp;</strong>{{ dagRun.executionDate}}</div>
+    </div>
+    <myDagRe [dagRun]="dagRun" (onNodeClick)="onTaskClick($event)"></myDagRe>
+
+    <tabset>
+        <tab heading="Params">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>key</th>
+                    <th>value</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr *ngFor="#param of dagRun.params">
+                    <td>{{param.key}}</td>
+                    <td>{{param.value}}</td>
+                </tr>
+                </tbody>
+            </table>
+        </tab>
+        <tab heading="History">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>Version</th>
+                    <th>Time of Start</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr *ngFor="#item of versionList; #idx=index" (click)="onHistoryClick(item.version)"
+                    [class.active]="item.version==dagRun.version">
+                    <td>{{item.version}}</td>
+                    <td>{{item.start}}</td>
+                </tr>
+                </tbody>
+            </table>
+        </tab>
+        <tab heading="PBF">
+            <table class="table">
+                <tr>
+                    <td>out.pbf</td>
+                    <td>folder</td>
+                    <td>massilia://pipeline/test/pbf</td>
+                </tr>
+            </table>
+        </tab>
+        <tab heading="Atlas">
+            <table class="table">
+                <tr>
+                    <td>out.atlas</td>
+                    <td>folder</td>
+                    <td>massilia://pipeline/test/atlas</td>
+                </tr>
+            </table>
+        </tab>
+
+        <tab heading="Database">
+            <table class="table">
+                <tr>
+                    <td>atlas-201602141011</td>
+                    <td>postgres</td>
+                    <td>rd12d02ls-osmdb0002</td>
+                </tr>
+            </table>
+        </tab>
+        <tab heading="Neutron">
+            <table class="table">
+                <tr>
+                    <td>atlas-201602141011</td>
+                    <td>postgres</td>
+                    <td>rd12d02ls-osmdb0002</td>
+                </tr>
+            </table>
+        </tab>
+    </tabset>
+</div>
+
+
+
+
+
+
+

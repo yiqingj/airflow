@@ -1,0 +1,30 @@
+<form class="form-inline pull-left">
+    <div class="form-group">
+        <input type="text" class="form-control" id="query"
+               placeholder="search...">
+    </div>
+    <button type="submit" class="btn btn-default">search</button>
+</form>
+<table class="table">
+    <thead>
+    <tr>
+        <th>name</th>
+        <th>state</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr *ngFor="#dagRun of dagRuns">
+        <td><a (click)="gotoDetail(dagRun)"><span class="h5">{{dagRun.dagId}} </span> </a>
+        </td>
+        <td>{{dagRun.state}}</td>
+    </tr>
+    </tbody>
+
+</table>
+
+<pagination [totalItems]="totalItems" [(ngModel)]="currentPage" [maxSize]="maxSize"
+            class="pagination-sm" (pageChanged)="onPageChanged($event)"
+            [boundaryLinks]="true" [rotate]="false" (numPages)="numPages = $event"
+            [itemsPerPage]="itemsPerPage"
+            previousText="&lsaquo;" nextText="&rsaquo;" firstText="&laquo;"
+            lastText="&raquo;" class="pull-right"></pagination>
