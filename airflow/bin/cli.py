@@ -29,15 +29,20 @@ subdir_help = "File location or directory from which to look for the dag"
 def process_subdir(subdir):
     dags_folder = conf.get("core", "DAGS_FOLDER")
     dags_folder = os.path.expanduser(dags_folder)
+    git_folder = conf.get("core", "GIT_REPO_FOLDER")
+    git_folder = os.path.expanduser(git_folder)
     if subdir:
         if "DAGS_FOLDER" in subdir:
             subdir = subdir.replace("DAGS_FOLDER", dags_folder)
+        if "GIT_REPO_FOLDER" in subdir:
+            subdir = subdir.replace("GIT_REPO_FOLDER", git_folder)
         subdir = os.path.abspath(os.path.expanduser(subdir))
-        if dags_folder.rstrip('/') not in subdir.rstrip('/'):
+        if dags_folder.rstrip('/') not in subdir.rstrip('/') and git_folder.rstrip(
+                '/') not in subdir.rstrip('/'):
             raise AirflowException(
-                "subdir has to be part of your DAGS_FOLDER as defined in your "
-                "airflow.cfg. DAGS_FOLDER is {df} and subdir is {sd}".format(
-                    df=dags_folder, sd=subdir))
+                "subdir has to be part of your DAGS_FOLDER/GIT_REPO_FOLDER as defined in your "
+                "airflow.cfg. DAGS_FOLDER is {df}, GIT_REPO_FOLDER is {gf} and subdir is {sd}".format(
+                    df=dags_folder, gf=git_folder, sd=subdir))
         return subdir
 
 
@@ -386,6 +391,28 @@ def webserver(args):
         sp.wait()
 
 
+def web(args):
+    print(settings.HEADER)
+
+    from airflow.web.webapp import create_app
+    app = create_app(conf)
+    workers = args.workers or conf.get('webserver', 'workers')
+    if args.debug:
+        print(
+            "Starting the web server on port {0} and host {1}.".format(
+                args.port, args.hostname))
+        app.run(debug=True, port=args.port, host=args.hostname)
+    else:
+        print(
+            'Running the Gunicorn server with {workers} {args.workerclass}'
+            'workers on host {args.hostname} and port '
+            '{args.port}...'.format(**locals()))
+        sp = subprocess.Popen([
+            'gunicorn', '-w', str(args.workers), '-k', str(args.workerclass),
+            '-t', '120', '-b', args.hostname + ':' + str(args.port),
+            'airflow.web.webapp:create_app(\'airflow.web.webapp.config.ProdConfig\')'])
+        sp.wait()
+
 def scheduler(args):
     print(settings.HEADER)
     job = jobs.SchedulerJob(
@@ -687,6 +714,32 @@ def get_parser():
     parser_webserver.add_argument(
         "-d", "--debug", help=ht, action="store_true")
     parser_webserver.set_defaults(func=webserver)
+
+    ht = "Start a Airflow new web instance"
+    parser_web2 = subparsers.add_parser('web', help=ht)
+    parser_web2.add_argument(
+        "-p", "--port",
+        default=conf.get('webserver', 'WEB_SERVER_PORT'),
+        type=int,
+        help="Set the port on which to run the web server")
+    parser_web2.add_argument(
+        "-w", "--workers",
+        default=conf.get('webserver', 'WORKERS'),
+        type=int,
+        help="Number of workers to run the webserver on")
+    parser_web2.add_argument(
+        "-k", "--workerclass",
+        default=conf.get('webserver', 'WORKER_CLASS'),
+        choices=['sync', 'eventlet', 'gevent', 'tornado'],
+        help="The worker class to use for gunicorn")
+    parser_web2.add_argument(
+        "-hn", "--hostname",
+        default=conf.get('webserver', 'WEB_SERVER_HOST'),
+        help="Set the hostname on which to run the web server")
+    ht = "Use the server that ships with Flask in debug mode"
+    parser_web2.add_argument(
+        "-d", "--debug", help=ht, action="store_true")
+    parser_web2.set_defaults(func=web)
 
     ht = "Start a scheduler scheduler instance"
     parser_scheduler = subparsers.add_parser('scheduler', help=ht)

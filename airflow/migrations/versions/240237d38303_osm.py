@@ -49,6 +49,7 @@ def upgrade():
 
     op.add_column('dag', sa.Column('health', sa.String(length=50), nullable=True))
     op.add_column('dag', sa.Column('schedule', sa.String(length=100), nullable=True))
+    op.add_column('dag', sa.Column('git_repo', sa.String(length=1000), nullable=True))
     op.add_column('dag', sa.Column('params', sa.TEXT, nullable=True))
     op.add_column('dag_run', sa.Column('version', sa.Integer(), server_default='0'))
     op.add_column('dag_run', sa.Column('queue', sa.String(50)))
@@ -68,6 +69,7 @@ def downgrade():
     op.drop_table('dagbag')
     op.drop_column('dag', 'health')
     op.drop_column('dag', 'schedule')
+    op.drop_column('dag', 'git_repo')
     op.drop_column('dag', 'params')
     op.drop_column('dag_run', 'version')
     op.drop_column('dag_run', 'queue')
