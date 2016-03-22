@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 import textwrap
+import warnings
 from datetime import datetime
 
 from builtins import input
@@ -13,12 +14,12 @@ import json
 
 import airflow
 from airflow import jobs, settings, utils
-from airflow import configuration
+from airflow import configuration as conf
 from airflow.executors import DEFAULT_EXECUTOR
 from airflow.models import DagModel, DagBag, TaskInstance, DagPickle, DagRun
 from airflow.utils import AirflowException, State
 
-DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'DAGS_FOLDER'))
+DAGS_FOLDER = os.path.expanduser(conf.get('core', 'DAGS_FOLDER'))
 
 # Common help text across subcommands
 mark_success_help = "Mark jobs as succeeded without running them"
@@ -26,16 +27,22 @@ subdir_help = "File location or directory from which to look for the dag"
 
 
 def process_subdir(subdir):
-    dags_folder = configuration.get("core", "DAGS_FOLDER")
+    dags_folder = conf.get("core", "DAGS_FOLDER")
     dags_folder = os.path.expanduser(dags_folder)
+    git_folder = conf.get("core", "GIT_REPO_FOLDER")
+    git_folder = os.path.expanduser(git_folder)
     if subdir:
         if "DAGS_FOLDER" in subdir:
             subdir = subdir.replace("DAGS_FOLDER", dags_folder)
+        if "GIT_REPO_FOLDER" in subdir:
+            subdir = subdir.replace("GIT_REPO_FOLDER", git_folder)
         subdir = os.path.abspath(os.path.expanduser(subdir))
-        if dags_folder not in subdir:
+        if dags_folder.rstrip('/') not in subdir.rstrip('/') and git_folder.rstrip(
+                '/') not in subdir.rstrip('/'):
             raise AirflowException(
-                "subdir has to be part of your DAGS_FOLDER as defined in your "
-                "airflow.cfg")
+                "subdir has to be part of your DAGS_FOLDER/GIT_REPO_FOLDER as defined in your "
+                "airflow.cfg. DAGS_FOLDER is {df}, GIT_REPO_FOLDER is {gf} and subdir is {sd}".format(
+                    df=dags_folder, gf=git_folder, sd=subdir))
         return subdir
 
 
@@ -76,7 +83,7 @@ def backfill(args):
             mark_success=args.mark_success,
             include_adhoc=args.include_adhoc,
             local=args.local,
-            donot_pickle=(args.donot_pickle or configuration.getboolean('core', 'donot_pickle')),
+            donot_pickle=(args.donot_pickle or conf.getboolean('core', 'donot_pickle')),
             ignore_dependencies=args.ignore_dependencies,
             pool=args.pool)
 
@@ -137,20 +144,13 @@ def run(args):
     utils.pessimistic_connection_handling()
 
     # Setting up logging
-    log = os.path.expanduser(configuration.get('core', 'BASE_LOG_FOLDER'))
-    directory = log + "/{args.dag_id}/{args.task_id}".format(args=args)
+    log_base = os.path.expanduser(conf.get('core', 'BASE_LOG_FOLDER'))
+    directory = log_base + "/{args.dag_id}/{args.task_id}".format(args=args)
     if not os.path.exists(directory):
         os.makedirs(directory)
     args.execution_date = dateutil.parser.parse(args.execution_date)
     iso = args.execution_date.isoformat()
     filename = "{directory}/{iso}".format(**locals())
-
-    # store old log (to help with S3 appends)
-    if os.path.exists(filename):
-        with open(filename, 'r') as logfile:
-            old_log = logfile.read()
-    else:
-        old_log = None
 
     subdir = process_subdir(args.subdir)
     logging.root.handlers = []
@@ -233,34 +233,39 @@ def run(args):
         executor.heartbeat()
         executor.end()
 
-    if configuration.get('core', 'S3_LOG_FOLDER').startswith('s3:'):
-        import boto
-        s3_log = filename.replace(log, configuration.get('core', 'S3_LOG_FOLDER'))
-        bucket, key = s3_log.lstrip('s3:/').split('/', 1)
-        if os.path.exists(filename):
+    # store logs remotely
+    remote_base = conf.get('core', 'REMOTE_BASE_LOG_FOLDER')
 
-            # get logs
-            with open(filename, 'r') as logfile:
-                new_log = logfile.read()
+    # deprecated as of March 2016
+    if not remote_base and conf.get('core', 'S3_LOG_FOLDER'):
+        warnings.warn(
+            'The S3_LOG_FOLDER conf key has been replaced by '
+            'REMOTE_BASE_LOG_FOLDER. Your conf still works but please '
+            'update airflow.cfg to ensure future compatibility.',
+            DeprecationWarning)
+        remote_base = conf.get('core', 'S3_LOG_FOLDER')
 
-            # remove old logs (since they are already in S3)
-            if old_log:
-                new_log.replace(old_log, '')
+    if os.path.exists(filename):
+        # read log and remove old logs to get just the latest additions
 
-            try:
-                s3 = boto.connect_s3()
-                s3_key = boto.s3.key.Key(s3.get_bucket(bucket), key)
+        with open(filename, 'r') as logfile:
+            log = logfile.read()
 
-                # append new logs to old S3 logs, if available
-                if s3_key.exists():
-                    old_s3_log = s3_key.get_contents_as_string().decode()
-                    new_log = old_s3_log + '\n' + new_log
+        remote_log_location = filename.replace(log_base, remote_base)
+        # S3
 
-                # send log to S3
-                encrypt = configuration.get('core', 'ENCRYPT_S3_LOGS')
-                s3_key.set_contents_from_string(new_log, encrypt_key=encrypt)
-            except:
-                print('Could not send logs to S3.')
+        if remote_base.startswith('s3:/'):
+            utils.S3Log().write(log, remote_log_location)
+        # GCS
+        elif remote_base.startswith('gs:/'):
+            utils.GCSLog().write(
+                log,
+                remote_log_location,
+                append=True)
+        # Other
+        elif remote_base:
+            logging.error(
+                'Unsupported remote log location: {}'.format(remote_base))
 
 
 def task_state(args):
@@ -304,6 +309,10 @@ def test(args):
         raise AirflowException('dag_id could not be found')
     dag = dagbag.dags[args.dag_id]
     task = dag.get_task(task_id=args.task_id)
+    # Add CLI provided task_params to task.params
+    if args.task_params:
+        passed_in_params = json.loads(args.task_params)
+        task.params.update(passed_in_params)
     ti = TaskInstance(task, args.execution_date)
 
     if args.dry_run:
@@ -363,8 +372,8 @@ def webserver(args):
     print(settings.HEADER)
 
     from airflow.www.app import cached_app
-    app = cached_app(configuration)
-    workers = args.workers or configuration.get('webserver', 'workers')
+    app = cached_app(conf)
+    workers = args.workers or conf.get('webserver', 'workers')
     if args.debug:
         print(
             "Starting the web server on port {0} and host {1}.".format(
@@ -382,6 +391,28 @@ def webserver(args):
         sp.wait()
 
 
+def web(args):
+    print(settings.HEADER)
+
+    from airflow.web.webapp import create_app
+    app = create_app(conf)
+    workers = args.workers or conf.get('webserver', 'workers')
+    if args.debug:
+        print(
+            "Starting the web server on port {0} and host {1}.".format(
+                args.port, args.hostname))
+        app.run(debug=True, port=args.port, host=args.hostname)
+    else:
+        print(
+            'Running the Gunicorn server with {workers} {args.workerclass}'
+            'workers on host {args.hostname} and port '
+            '{args.port}...'.format(**locals()))
+        sp = subprocess.Popen([
+            'gunicorn', '-w', str(args.workers), '-k', str(args.workerclass),
+            '-t', '120', '-b', args.hostname + ':' + str(args.port),
+            'airflow.web.webapp:create_app(\'airflow.web.webapp.config.ProdConfig\')'])
+        sp.wait()
+
 def scheduler(args):
     print(settings.HEADER)
     job = jobs.SchedulerJob(
@@ -398,15 +429,15 @@ def serve_logs(args):
     flask_app = flask.Flask(__name__)
 
     @flask_app.route('/log/<path:filename>')
-    def serve_logs(filename):
-        log = os.path.expanduser(configuration.get('core', 'BASE_LOG_FOLDER'))
+    def serve_logs(filename):  # noqa
+        log = os.path.expanduser(conf.get('core', 'BASE_LOG_FOLDER'))
         return flask.send_from_directory(
             log,
             filename,
             mimetype="application/json",
             as_attachment=False)
     WORKER_LOG_SERVER_PORT = \
-        int(configuration.get('celery', 'WORKER_LOG_SERVER_PORT'))
+        int(conf.get('celery', 'WORKER_LOG_SERVER_PORT'))
     flask_app.run(
         host='0.0.0.0', port=WORKER_LOG_SERVER_PORT)
 
@@ -432,7 +463,7 @@ def worker(args):
     sp.kill()
 
 
-def initdb(args):
+def initdb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
     utils.initdb()
     print("Done.")
@@ -450,18 +481,18 @@ def resetdb(args):
         print("Bail.")
 
 
-def upgradedb(args):
+def upgradedb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
     utils.upgradedb()
 
 
-def version(args):
+def version(args):  # noqa
     print(settings.HEADER + "  v" + airflow.__version__)
 
 
 def flower(args):
-    broka = configuration.get('celery', 'BROKER_URL')
-    args.port = args.port or configuration.get('celery', 'FLOWER_PORT')
+    broka = conf.get('celery', 'BROKER_URL')
+    args.port = args.port or conf.get('celery', 'FLOWER_PORT')
     port = '--port=' + args.port
     api = ''
     if args.broker_api:
@@ -470,12 +501,19 @@ def flower(args):
     sp.wait()
 
 
-def kerberos(args):
+def kerberos(args):  # noqa
     print(settings.HEADER)
 
     import airflow.security.kerberos
     airflow.security.kerberos.run()
 
+
+def dag_run_state(args):
+    session = settings.Session()
+    dr = session.query(DagRun).filter(
+            DagRun.dag_id == args.dag_id).order_by(DagRun.execution_date.desc()).first()
+
+    print("{} \n conf: {} \n extra: {}".format(dr, dr.conf, dr.extra))
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -636,6 +674,8 @@ def get_parser():
         default=DAGS_FOLDER)
     parser_test.add_argument(
         "-dr", "--dry_run", help="Perform a dry run", action="store_true")
+    parser_test.add_argument(
+        "-tp", "--task_params", help="Sends a JSON params dict to the task")
     parser_test.set_defaults(func=test)
 
     ht = "Get the status of a task instance."
@@ -653,27 +693,53 @@ def get_parser():
     parser_webserver = subparsers.add_parser('webserver', help=ht)
     parser_webserver.add_argument(
         "-p", "--port",
-        default=configuration.get('webserver', 'WEB_SERVER_PORT'),
+        default=conf.get('webserver', 'WEB_SERVER_PORT'),
         type=int,
         help="Set the port on which to run the web server")
     parser_webserver.add_argument(
         "-w", "--workers",
-        default=configuration.get('webserver', 'WORKERS'),
+        default=conf.get('webserver', 'WORKERS'),
         type=int,
         help="Number of workers to run the webserver on")
     parser_webserver.add_argument(
         "-k", "--workerclass",
-        default=configuration.get('webserver', 'WORKER_CLASS'),
+        default=conf.get('webserver', 'WORKER_CLASS'),
         choices=['sync', 'eventlet', 'gevent', 'tornado'],
         help="The worker class to use for gunicorn")
     parser_webserver.add_argument(
         "-hn", "--hostname",
-        default=configuration.get('webserver', 'WEB_SERVER_HOST'),
+        default=conf.get('webserver', 'WEB_SERVER_HOST'),
         help="Set the hostname on which to run the web server")
     ht = "Use the server that ships with Flask in debug mode"
     parser_webserver.add_argument(
         "-d", "--debug", help=ht, action="store_true")
     parser_webserver.set_defaults(func=webserver)
+
+    ht = "Start a Airflow new web instance"
+    parser_web2 = subparsers.add_parser('web', help=ht)
+    parser_web2.add_argument(
+        "-p", "--port",
+        default=conf.get('webserver', 'WEB_SERVER_PORT'),
+        type=int,
+        help="Set the port on which to run the web server")
+    parser_web2.add_argument(
+        "-w", "--workers",
+        default=conf.get('webserver', 'WORKERS'),
+        type=int,
+        help="Number of workers to run the webserver on")
+    parser_web2.add_argument(
+        "-k", "--workerclass",
+        default=conf.get('webserver', 'WORKER_CLASS'),
+        choices=['sync', 'eventlet', 'gevent', 'tornado'],
+        help="The worker class to use for gunicorn")
+    parser_web2.add_argument(
+        "-hn", "--hostname",
+        default=conf.get('webserver', 'WEB_SERVER_HOST'),
+        help="Set the hostname on which to run the web server")
+    ht = "Use the server that ships with Flask in debug mode"
+    parser_web2.add_argument(
+        "-d", "--debug", help=ht, action="store_true")
+    parser_web2.set_defaults(func=web)
 
     ht = "Start a scheduler scheduler instance"
     parser_scheduler = subparsers.add_parser('scheduler', help=ht)
@@ -737,12 +803,12 @@ def get_parser():
     parser_worker.add_argument(
         "-q", "--queues",
         help="Comma delimited list of queues to serve",
-        default=configuration.get('celery', 'DEFAULT_QUEUE'))
+        default=conf.get('celery', 'DEFAULT_QUEUE'))
     parser_worker.add_argument(
         "-c", "--concurrency",
         type=int,
         help="The number of worker processes",
-        default=configuration.get('celery', 'celeryd_concurrency'))
+        default=conf.get('celery', 'celeryd_concurrency'))
     parser_worker.set_defaults(func=worker)
 
     ht = "Serve logs generate by worker"
@@ -764,10 +830,10 @@ def get_parser():
     parser_kerberos = subparsers.add_parser('kerberos', help=ht)
     parser_kerberos.add_argument(
         "-kt", "--keytab", help="keytab",
-        nargs='?', default=configuration.get('kerberos', 'keytab'))
+        nargs='?', default=conf.get('kerberos', 'keytab'))
     parser_kerberos.add_argument(
         "principal", help="kerberos principal",
-        nargs='?', default=configuration.get('kerberos', 'principal'))
+        nargs='?', default=conf.get('kerberos', 'principal'))
     parser_kerberos.set_defaults(func=kerberos)
 
     ht = "Render a task instance's template(s)"
@@ -780,5 +846,10 @@ def get_parser():
         "-sd", "--subdir", help=subdir_help,
         default=DAGS_FOLDER)
     parser_render.set_defaults(func=render)
+
+    ht = "Check state of last dag_run"
+    parser_dag_run_state = subparsers.add_parser('dag_run_state', help=ht)
+    parser_dag_run_state.add_argument('dag_id', help="the id of the dag to check")
+    parser_dag_run_state.set_defaults(func=dag_run_state)
 
     return parser

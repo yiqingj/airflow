@@ -1,3 +1,17 @@
+# -*- coding: utf-8 -*-
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -15,6 +29,9 @@ import socket
 import subprocess
 import sys
 from time import sleep
+
+from git import Remote, Repo, FetchInfo
+import os
 
 from sqlalchemy import Column, Integer, String, DateTime, func, Index, or_
 from sqlalchemy.orm.session import make_transient
@@ -417,10 +434,18 @@ class SchedulerJob(BaseJob):
                     dag_id=dag.dag_id,
                     run_id='scheduled__' + next_run_date.isoformat(),
                     execution_date=next_run_date,
+                    start_date=datetime.now(),
                     state=State.RUNNING,
                     external_trigger=False
                 )
                 session.add(next_run)
+                # yiqing: create all task instances when scheduling it to make web UI easier.
+                TI = models.TaskInstance
+                for task in dag.tasks:
+                    ti = TI(task, next_run_date)
+                    ti.upstreams = [t.task_id for t in task.upstream_list]
+                    ti.downstreams = [t.task_id for t in task.downstream_list]
+                    session.add(ti)
                 session.commit()
                 return next_run
 
@@ -468,15 +493,18 @@ class SchedulerJob(BaseJob):
                 .filter(
                     TI.dag_id == dag.dag_id,
                     TI.execution_date.in_(active_runs),
+                    ~TI.expired,
                     TI.state.in_((State.RUNNING, State.SUCCESS, State.FAILED)),
                 )
             )
             skip_tis = {(ti[0], ti[1]) for ti in qry.all()}
 
+        # get data set of all task runs of active dag runs
         descartes = [obj for obj in product(dag.tasks, active_runs)]
         self.logger.info('Checking dependencies on {} tasks instances, minus {} '
                      'skippable ones'.format(len(descartes), len(skip_tis)))
         for task, dttm in descartes:
+            # skip others, only left queued and unscheduled tasks
             if task.adhoc or (task.task_id, dttm) in skip_tis:
                 continue
             ti = TI(task, dttm)
@@ -616,10 +644,9 @@ class SchedulerJob(BaseJob):
 
                 i += 1
                 try:
+                    dagbag.collect_remote_dags(only_if_updated=True)
                     if i % self.refresh_dags_every == 0:
-                        dagbag = models.DagBag(self.subdir, sync_to_db=True)
-                    else:
-                        dagbag.collect_dags(only_if_updated=True)
+                        dagbag.deactivate_inactive_dags()
                 except:
                     self.logger.error("Failed at reloading the dagbag")
                     Stats.incr('dag_refresh_error', 1, 1)
@@ -891,3 +918,63 @@ class LocalTaskJob(BaseJob):
                 "Taking the poison pill. So long.".format(**locals()))
             self.process.terminate()
     """
+
+
+class DagSyncJob(BaseJob):
+    """A DagSyncJob keeps local dag folder up to date if dag is managed by git.
+    """
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'DagSyncJob'
+    }
+
+    def __init__(self, num_runs=None, *args, **kwargs):
+        self.num_runs = num_runs
+
+        super(DagSyncJob, self).__init__(*args, **kwargs)
+        pass
+
+    def _execute(self):
+        session = settings.Session()
+        i = 0
+        while not self.num_runs or self.num_runs > i:
+            i += 1
+            self.logger.info('Sync remote dags')
+            self.update_repo(session)
+            try:
+                self.heartbeat()
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.error("DagSyncJob heartbeat failed!")
+        session.commit()
+        session.close()
+
+    def update_repo(self, session):
+
+        DagBagModel = models.DagBagModel
+        for bag in session.query(DagBagModel):
+            try:
+                path = os.path.join('/var/tmp/airflow/git', bag.name)
+                if not os.path.exists(path):
+                    self.logger.info('cloning repo from {}'.format(bag.url))
+                    repo = Repo.clone_from(bag.url, path)
+                else:
+                    repo = Repo(path)
+                self.logger.info('updating repo from {}'.format(bag.url))
+                remote = Remote(repo, 'origin')
+                infos = remote.pull()
+                for info in infos:
+                    if not info.name.split('/')[1] == bag.branch:
+                        continue
+                    if not (info.flags | FetchInfo.HEAD_UPTODATE):
+                        print('dag changed!')
+                    else:
+                        print('resting...')
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.error('DagSyncJob failed!')
+
+
+if __name__ == '__main__':
+    job = DagSyncJob()
+    job.run()
