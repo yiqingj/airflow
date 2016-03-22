@@ -65893,10 +65893,10 @@ $__System.register("18e", ["139", "205", "18", "1f6", "205"], function(exports_1
       DagService = (function() {
         function DagService(http) {
           this.http = http;
-          this._dagUrl = 'http://localhost:5000/api/dag';
-          this._dagRunUrl = 'http://localhost:5000/api/dagrun';
-          this._taskRunUrl = 'http://localhost:5000/api/taskrun';
-          this._logUrl = 'http://localhost:5000/api/log';
+          this._dagUrl = 'api/dag';
+          this._dagRunUrl = 'api/dagrun';
+          this._taskRunUrl = 'api/taskrun';
+          this._logUrl = 'api/log';
         }
         DagService.prototype.getDags = function(page, size, query) {
           console.log("GetDags request fired...");
