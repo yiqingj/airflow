@@ -62,7 +62,7 @@ Base = declarative_base()
 ID_LEN = 250
 SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
 DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'DAGS_FOLDER'))
-REMOTE_DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'GIT_REPO_FOLDER'))
+GIT_REPO_FOLDER = os.path.expanduser(configuration.get('core', 'GIT_REPO_FOLDER'))
 XCOM_RETURN_KEY = 'return_value'
 
 ENCRYPTION_ON = False
@@ -190,7 +190,7 @@ class DagBag(LoggingMixin):
         #         del self.dags[dag_id]
         return self.dags.get(dag_id)
 
-    def process_file(self, filepath, only_if_updated=True, safe_mode=True):
+    def process_file(self, filepath, only_if_updated=True, safe_mode=True, source='local'):
         """
         Given a path to a python module, this method imports the module and
         look for dag objects within it.
@@ -235,7 +235,7 @@ class DagBag(LoggingMixin):
                     if not dag.full_filepath:
                         dag.full_filepath = filepath
                     dag.is_subdag = False
-                    self.bag_dag(dag, parent_dag=dag, root_dag=dag)
+                    self.bag_dag(dag, parent_dag=dag, root_dag=dag, source=source)
                     found_dags.append(dag)
                     found_dags += dag.subdags
 
@@ -279,7 +279,7 @@ class DagBag(LoggingMixin):
                         'Marked zombie job {} as failed'.format(ti))
         session.commit()
 
-    def bag_dag(self, dag, parent_dag, root_dag):
+    def bag_dag(self, dag, parent_dag, root_dag, source='local'):
         """
         Adds the DAG into the bag, recurses into sub dags.
         """
@@ -302,6 +302,7 @@ class DagBag(LoggingMixin):
             orm_dag.is_active = True
             orm_dag.schedule = dag.schedule_interval_raw
             orm_dag.params = json.dumps(dag.params)
+            orm_dag.git_repo = source
             session.merge(orm_dag)
             # yiqing: add task into task table for web UI.
 
@@ -334,7 +335,7 @@ class DagBag(LoggingMixin):
     def collect_dags(
             self,
             dag_folder=None,
-            only_if_updated=True):
+            only_if_updated=True, source='local'):
         self.logger.info("Filling up the DagBag from {}".format(dag_folder))
         """
         Given a file path or a folder, this method looks for python modules,
@@ -368,7 +369,7 @@ class DagBag(LoggingMixin):
                         if not any(
                                 [re.findall(p, filepath) for p in patterns]):
                             self.process_file(
-                                filepath, only_if_updated=only_if_updated)
+                                filepath, only_if_updated=only_if_updated, source=source)
                     except Exception as e:
                         logging.warning(e)
 
@@ -378,7 +379,8 @@ class DagBag(LoggingMixin):
         session = settings.Session()
         for bag in session.query(DagBagModel).filter(~DagBagModel.disabled):
             try:
-                path = os.path.join('/var/tmp/airflow/git', bag.name)
+                base_dir = configuration.get('core', 'GIT_REPO_FOLDER')
+                path = os.path.join(base_dir, bag.name)
                 if not os.path.exists(path):
                     self.logger.info('cloning repo from {}'.format(bag.url))
                     repo = Repo.clone_from(bag.url, path)
@@ -391,9 +393,8 @@ class DagBag(LoggingMixin):
                     if not info.name.split('/')[1] == bag.branch:
                         continue
                     if not (info.flags & FetchInfo.HEAD_UPTODATE) or not only_if_updated:
-                        base_dir = configuration.get('core', 'GIT_REPO_FOLDER')
                         dag_folder = os.path.join(base_dir, bag.name, bag.folder)
-                        self.collect_dags(dag_folder, only_if_updated=only_if_updated)
+                        self.collect_dags(dag_folder, only_if_updated=only_if_updated, source=bag.name)
 
             except Exception as e:
                 self.logger.exception(e)
@@ -718,7 +719,7 @@ class TaskInstance(Base):
         if task_start_date:
             cmd += "-s " + task_start_date.isoformat() + ' '
         if not pickle_id and dag and dag.full_filepath:
-            cmd += "-sd DAGS_FOLDER/{dag.filepath} "
+            cmd += "-sd {dag.filepath} "
         return cmd.format(**locals())
 
     @property
@@ -2080,6 +2081,8 @@ class DagModel(Base):
     scheduler_lock = Column(Boolean)
     # Foreign key to the latest pickle_id
     pickle_id = Column(Integer)
+    # git source name
+    git_repo = Column(String(1000))
     # The location of the file containing the DAG object
     fileloc = Column(String(2000))
     # String representing the owners
@@ -2089,6 +2092,7 @@ class DagModel(Base):
     params = Column(TEXT)  # json format
     schedule = Column(String(1000))
     health = Column(String(30))
+
 
 
     def __repr__(self):
@@ -2292,8 +2296,8 @@ class DAG(LoggingMixin):
         """
         File location of where the dag object is instantiated
         """
-        fn = self.full_filepath.replace(DAGS_FOLDER + '/', '')
-        fn = fn.replace(REMOTE_DAGS_FOLDER + '/', '')
+        fn = self.full_filepath.replace(DAGS_FOLDER + '/', 'DAGS_FOLDER/')
+        fn = fn.replace(GIT_REPO_FOLDER + '/', 'GIT_REPO_FOLDER/')
         fn = fn.replace(os.path.dirname(__file__) + '/', '')
         return fn
 
