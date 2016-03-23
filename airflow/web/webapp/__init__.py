@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask.ext.restful import Api
 from flask.ext.cors import CORS
 
@@ -24,8 +24,12 @@ errors = {
 
 
 def create_app(object_name):
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path='')
     app.config.from_object(object_name)
+
+    @app.route("/<path:path>")
+    def index(path):
+        return send_from_directory(app.static_folder, "index.html")
 
     rest_api = Api(prefix='/api', errors=errors)
     rest_api.add_resource(DagRunApi, '/dagrun/<dag_id>/<execution_date>')
