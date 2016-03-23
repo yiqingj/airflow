@@ -754,13 +754,13 @@ class TaskInstance(Base):
             "&downstream=false"
         ).format(**locals())
 
-    def current_state(self, main_session=None):
+    @provide_session
+    def current_state(self, session=None):
         """
         Get the very latest state from the database, if a session is passed,
         we use and looking up the state becomes part of the session, otherwise
         a new session is used.
         """
-        session = main_session or settings.Session()
         TI = TaskInstance
         ti = session.query(TI).filter(
             TI.dag_id == self.dag_id,
@@ -771,27 +771,23 @@ class TaskInstance(Base):
             state = ti[0].state
         else:
             state = None
-        if not main_session:
-            session.commit()
-            session.close()
         return state
 
-    def error(self, main_session=None):
+    @provide_session
+    def error(self, session=None):
         """
         Forces the task instance's state to FAILED in the database.
         """
-        session = settings.Session()
         logging.error("Recording the task instance as FAILED")
         self.state = State.FAILED
         session.merge(self)
         session.commit()
-        session.close()
 
-    def refresh_from_db(self, main_session=None):
+    @provide_session
+    def refresh_from_db(self, session=None):
         """
         Refreshes the task instance from the database based on the primary key
         """
-        session = main_session or settings.Session()
         TI = TaskInstance
         ti = session.query(TI).filter(
             TI.dag_id == self.dag_id,
@@ -807,9 +803,17 @@ class TaskInstance(Base):
         else:
             self.state = None
 
-        if not main_session:
-            session.commit()
-            session.close()
+    @provide_session
+    def clear_xcom_data(self, session=None):
+        """
+        Clears all XCom data from the database for the task instance
+        """
+        session.query(XCom).filter(
+            XCom.dag_id == self.dag_id,
+            XCom.task_id == self.task_id,
+            XCom.execution_date == self.execution_date
+        ).delete()
+        session.commit()
 
     @property
     def key(self):
@@ -861,7 +865,8 @@ class TaskInstance(Base):
         """
         return self.is_queueable(flag_upstream_failed) and not self.pool_full()
 
-    def are_dependents_done(self, main_session=None):
+    @provide_session
+    def are_dependents_done(self, session=None):
         """
         Checks whether the dependents of this task instance have all succeeded.
         This is meant to be used by wait_for_downstream.
@@ -870,7 +875,6 @@ class TaskInstance(Base):
         schedule of a task until the dependents are done. For instance,
         if the task DROPs and recreates a table.
         """
-        session = main_session or settings.Session()
         task = self.task
 
         if not task._downstream_list:
@@ -884,13 +888,11 @@ class TaskInstance(Base):
             TaskInstance.state == State.SUCCESS,
         )
         count = ti[0][0]
-        if not main_session:
-            session.commit()
-            session.close()
         return count == len(task._downstream_list)
 
+    @provide_session
     def are_dependencies_met(
-            self, main_session=None, flag_upstream_failed=False,
+            self, session=None, flag_upstream_failed=False,
             verbose=False):
         """
         Returns a boolean on whether the upstream tasks are in a SUCCESS state
@@ -910,8 +912,6 @@ class TaskInstance(Base):
         TI = TaskInstance
         TR = TriggerRule
 
-        # Using the session if passed as param
-        session = main_session or settings.Session()
         task = self.task
 
         # Checking that the depends_on_past is fulfilled
@@ -932,7 +932,7 @@ class TaskInstance(Base):
             # Applying wait_for_downstream
             previous_ti.task = self.task
             if task.wait_for_downstream and not \
-                    previous_ti.are_dependents_done(session):
+                    previous_ti.are_dependents_done(session=session):
                 if verbose:
                     logging.warning("wait_for_downstream not satisfied")
                 return False
@@ -995,9 +995,7 @@ class TaskInstance(Base):
         ):
             return True
 
-        if not main_session:
-            session.commit()
-            session.close()
+        session.commit()
         if verbose:
             logging.warning("Trigger rule `{}` not satisfied".format(tr))
         return False
@@ -1039,6 +1037,7 @@ class TaskInstance(Base):
 
         return open_slots <= 0
 
+    @provide_session
     def run(
             self,
             verbose=True,
@@ -1047,7 +1046,8 @@ class TaskInstance(Base):
             mark_success=False,  # Don't run the task, act as if it succeeded
             test_mode=False,  # Doesn't record success or failure in the DB
             job_id=None,
-            pool=None,):
+            pool=None,
+            session=None):
         """
         Runs the task instance.
         """
@@ -1055,9 +1055,8 @@ class TaskInstance(Base):
         self.pool = pool or task.pool
         self.test_mode = test_mode
         self.force = force
-        session = settings.Session()
-        self.refresh_from_db(session)
-        # session.commit()
+        self.refresh_from_db()
+        self.clear_xcom_data()
         self.job_id = job_id
         iso = datetime.now().isoformat()
         self.hostname = socket.gethostname()
@@ -1071,7 +1070,7 @@ class TaskInstance(Base):
                 " on {self.end_date}".format(**locals())
             )
         elif not ignore_dependencies and \
-                not self.are_dependencies_met(session, verbose=True):
+                not self.are_dependencies_met(session=session, verbose=True):
             logging.warning("Dependencies not met yet")
         elif self.state == State.UP_FOR_RETRY and \
                 not self.ready_for_retry():
@@ -1106,7 +1105,6 @@ class TaskInstance(Base):
                 self.queued_dttm = datetime.now()
                 session.merge(self)
                 session.commit()
-                session.close()
                 logging.info("Queuing into pool {}".format(self.pool))
                 return
             if not test_mode:
@@ -1116,7 +1114,6 @@ class TaskInstance(Base):
             if not test_mode:
                 session.merge(self)
             session.commit()
-            session.close()
 
             # Closing all pooled connections to prevent
             # "max number of connections reached"
@@ -1168,7 +1165,6 @@ class TaskInstance(Base):
                 raise
 
             # Recording SUCCESS
-            session = settings.Session()
             self.end_date = datetime.now()
             self.set_duration()
             self.state = State.SUCCESS
@@ -1186,7 +1182,6 @@ class TaskInstance(Base):
                 logging.exception(e3)
 
         session.commit()
-        session.close()
 
     def dry_run(self):
         task = self.task
@@ -2714,6 +2709,15 @@ class DAG(LoggingMixin):
             ignore_dependencies=ignore_dependencies,
             pool=pool)
         job.run()
+
+    def cli(self):
+        """
+        Exposes a CLI specific to this DAG
+        """
+        from airflow.bin import cli
+        parser = cli.CLIFactory.get_parser(dag_parser=True)
+        args = parser.parse_args()
+        args.func(args, self)
 
 
 class Chart(Base):
