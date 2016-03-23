@@ -708,6 +708,10 @@ class CLIFactory(object):
             'help': "Start a Airflow webserver instance",
             'args': ('port', 'workers', 'workerclass', 'hostname', 'debug'),
         }, {
+            'func': web,
+            'help': "Start a Airflow webserver instance",
+            'args': ('port', 'workers', 'workerclass', 'hostname', 'debug'),
+        }, {
             'func': resetdb,
             'help': "Burn down and rebuild the metadata database",
             'args': ('yes',),
