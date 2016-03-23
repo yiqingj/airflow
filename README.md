@@ -6,6 +6,7 @@
 [![Code Health](https://landscape.io/github/airbnb/airflow/master/landscape.svg?style=flat)](https://landscape.io/github/airbnb/airflow/master)
 [![Requirements Status](https://requires.io/github/airbnb/airflow/requirements.svg?branch=master)](https://requires.io/github/airbnb/airflow/requirements/?branch=master)
 [![pypi downloads](https://img.shields.io/pypi/dm/airflow.svg)](https://pypi.python.org/pypi/airflow/)
+[![Documentation](https://img.shields.io/badge/docs-pythonhosted-blue.svg)](http://pythonhosted.org/airflow/)
 [![Join the chat at https://gitter.im/airbnb/airflow](https://badges.gitter.im/airbnb/airflow.svg)](https://gitter.im/airbnb/airflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 Airflow is a platform to programmatically author, schedule and monitor
@@ -71,10 +72,7 @@ if you may.
 
 Committers:
 
-* [@mistercrunch](https://github.com/mistercrunch) ([Airbnb](http://airbnb.io/))
-* [@r39132](https://github.com/r39132) ([Agari](https://github.com/agaridata))
-* [@criccomini](https://github.com/criccomini) ([WePay](http://www.wepay.com))
-* [@bolkedebruin](https://github.com/bolkedebruin) ([ING](http://www.ing.com/))
+* Refer to [Committers](https://github.com/airbnb/airflow/wiki/Committers)
 
 Currently **officially** using Airflow:
 
