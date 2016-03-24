@@ -2,6 +2,7 @@
 from builtins import bytes
 import logging
 import sys
+import os
 from string import Template
 from subprocess import Popen, STDOUT, PIPE
 from tempfile import gettempdir, NamedTemporaryFile
@@ -61,14 +62,20 @@ class BashOperator(BaseOperator):
                 f.write(bytes(bash_command, 'utf_8'))
                 f.flush()
                 fname = f.name
-                script_location = tmp_dir + "/" + fname
                 logging.info("Temporary script "
-                             "location :{0}".format(script_location))
+                             "location :{0}".format(fname))
                 logging.info("Running command: " + bash_command)
+                ws = context['ws']
+                logging.info("work directory: " + ws)
+                if not os.path.exists(ws):
+                    try:
+                        os.makedirs(ws)
+                    except:
+                        raise AirflowException("bash work directory can't be created.")
                 sp = Popen(
                     ['bash', fname],
                     stdout=PIPE, stderr=STDOUT,
-                    cwd=tmp_dir, env=self.env)
+                    cwd=ws, env=self.env)
 
                 self.sp = sp
 

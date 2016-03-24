@@ -1278,12 +1278,17 @@ class TaskInstance(Base):
             if env:
                 env.update(dag_run.conf)
 
+        workspace_folder = configuration.get('core','workspace_folder')
+
+        ws = '{}/{}/{}'.format(workspace_folder, self.dag_id, ts_nodash)
+
         return {
             'dag': task.dag,
             'ds': ds,
             'ds_nodash': ds_nodash,
             'ts': ts,
             'ts_nodash': ts_nodash,
+            'ws': ws,
             'yesterday_ds': yesterday_ds,
             'yesterday_ds_nodash': yesterday_ds_nodash,
             'tomorrow_ds': tomorrow_ds,
