@@ -478,6 +478,7 @@ class CLIFactory(object):
     args = {
         # Shared
         'dag_id': Arg(("dag_id",), "The id of the dag"),
+        'dag_id_optional': Arg(("-d", "--dag_id",), "The id of the dag"),
         'task_id': Arg(("task_id",), "The id of the task"),
         'execution_date': Arg(
             ("execution_date",), help="The execution date of the DAG",
@@ -722,7 +723,7 @@ class CLIFactory(object):
         }, {
             'func': scheduler,
             'help': "Start a scheduler scheduler instance",
-            'args': ('dag_id', 'subdir', 'num_runs', 'do_pickle'),
+            'args': ('dag_id_optional', 'subdir', 'num_runs', 'do_pickle'),
         }, {
             'func': worker,
             'help': "Start a Celery worker node",
