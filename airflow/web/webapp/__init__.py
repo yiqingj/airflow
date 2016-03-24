@@ -26,9 +26,6 @@ errors = {
 def create_app(object_name):
     app = Flask(__name__, static_url_path='')
     app.config.from_object(object_name)
-    @app.route('/')
-    def root():
-        return app.send_static_file('index.html')
 
     @app.route("/<path:path>")
     def index(path):
