@@ -11,9 +11,9 @@ from .parsers import (
 task_instance_fields = {
     'taskId': fields.String(attribute='task_id'),
     'dagId': fields.String(attribute='dag_id'),
-    'executionDate': fields.DateTime(attribute='execution_date',dt_format='iso8601'),
-    'startDate': fields.DateTime(attribute='start_date',dt_format='iso8601'),
-    'endDate': fields.DateTime(attribute='end_date',dt_format='iso8601'),
+    'executionDate': fields.DateTime(attribute='execution_date', dt_format='iso8601'),
+    'startDate': fields.DateTime(attribute='start_date', dt_format='iso8601'),
+    'endDate': fields.DateTime(attribute='end_date', dt_format='iso8601'),
     'duration': fields.Float,
     'state': fields.String,
     'tryNumber': fields.Integer(attribute='try_number'),
@@ -24,7 +24,7 @@ task_instance_fields = {
     'queue': fields.String,
     'priorityWeight': fields.Integer(attribute='priority_weight'),
     'operator': fields.String,
-    'queuedDttm': fields.DateTime(attribute='queued_dttm',dt_format='iso8601'),
+    'queuedDttm': fields.DateTime(attribute='queued_dttm', dt_format='iso8601'),
     'version': fields.Integer,
     'upstreams': fields.List(fields.String),
     'downstreams': fields.List(fields.String)
@@ -81,7 +81,7 @@ class TaskInstanceListApi(Resource):
         execution_date = req.get('executionDate')
         mode = req.get('mode')
         dag_run = session.query(DagRun).filter(DagRun.dag_id == dag_id).filter(
-                DagRun.execution_date == execution_date).first()
+            DagRun.execution_date == execution_date).first()
         dag_run.version += 1  # jump dag run version for each task re-run
         dag_run.state = State.RUNNING
 
@@ -98,23 +98,25 @@ class TaskInstanceListApi(Resource):
             self.schedule_task(task, tasks, execution_date, dag_run.version, session,
                                is_single=True)
         elif mode == 'upstream':
+            scheduled = []  # avoid duplicate
             self.schedule_task(task, tasks, execution_date, dag_run.version, session,
-                               is_upstream=True)
+                               is_upstream=True, scheduled=scheduled)
         elif mode == 'downstream':
+            scheduled = []  # avoid duplicate
             self.schedule_task(task, tasks, execution_date, dag_run.version, session,
-                               is_upstream=False)
+                               is_upstream=False, scheduled=scheduled)
 
         session.commit()
 
         return req
 
     def schedule_task(self, task, tasks, execution_date, version, session, is_upstream=False,
-                      is_single=False):
+                      is_single=False, scheduled=[]):
         TI = TaskInstance
         task_run = TI(
-                task_id=task.task_id,
-                dag_id=task.dag_id,
-                execution_date=execution_date)
+            task_id=task.task_id,
+            dag_id=task.dag_id,
+            execution_date=execution_date)
         task_run.version = version
         task_run.upstreams = task.upstreams
         task_run.downstreams = task.downstreams
@@ -126,7 +128,8 @@ class TaskInstanceListApi(Resource):
                 r.expired = True
                 if not r.state:
                     r.state = State.SKIPPED
-        session.add(task_run)
+        scheduled.append(task.task_id)
+        session.merge(task_run)
         if is_single:
             return
         deps = None
@@ -137,8 +140,9 @@ class TaskInstanceListApi(Resource):
 
         for task_id in deps:
             task = [t for t in tasks if t.task_id == task_id][0]
-            self.schedule_task(task, tasks, execution_date, version, session, is_upstream,
-                               is_single)
+            if not task.task_id in scheduled:
+                self.schedule_task(task, tasks, execution_date, version, session, is_upstream,
+                                   is_single, scheduled=scheduled)
 
 
 class TaskInstanceApi(Resource):
