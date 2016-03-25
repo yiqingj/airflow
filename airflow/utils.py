@@ -139,7 +139,12 @@ def provide_session(func):
             needs_session = True
             session = settings.Session()
             kwargs['session'] = session
-        result = func(*args, **kwargs)
+        try:
+            result = func(*args, **kwargs)
+        except Exception as e:
+            if needs_session:
+                session.rollback()
+            raise e
         if needs_session:
             session.expunge_all()
             session.commit()
