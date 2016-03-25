@@ -3,6 +3,7 @@ from flask.ext.restful import Resource, fields, marshal_with
 from flask._compat import PY2
 from airflow.utils import provide_session, State
 from airflow.models import TaskInstance
+from airflow import configuration as conf
 import os, socket
 
 
@@ -17,8 +18,10 @@ class LogApi(Resource):
         if not ti:
             abort(404)
         log_relative = "{dag_id}/{task_id}/{execution_date}".format(
-                **locals())
-        loc = os.path.join('/Users/yiqingjin/code_dir/openflow/openflow/logs', log_relative)
+            **locals())
+        BASE_LOG_FOLDER = os.path.expanduser(
+            conf.get('core', 'BASE_LOG_FOLDER'))
+        loc = os.path.join(BASE_LOG_FOLDER, log_relative)
 
         host = ti.hostname
         log_loaded = False
@@ -35,7 +38,7 @@ class LogApi(Resource):
         else:
             WORKER_LOG_SERVER_PORT = 8080
             url = os.path.join(
-                    "http://{host}:{WORKER_LOG_SERVER_PORT}/log", log_relative
+                "http://{host}:{WORKER_LOG_SERVER_PORT}/log", log_relative
             ).format(**locals())
             log += "*** Log file isn't local.\n"
             log += "*** Fetching here: {url}\n".format(**locals())
@@ -45,7 +48,7 @@ class LogApi(Resource):
                 log_loaded = True
             except:
                 log += "*** Failed to fetch log file from worker.\n".format(
-                        **locals())
+                    **locals())
 
         if PY2 and not isinstance(log, unicode):
             log = log.decode('utf-8')

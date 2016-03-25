@@ -27,9 +27,12 @@ def create_app(object_name):
     app = Flask(__name__, static_url_path='')
     app.config.from_object(object_name)
 
-    @app.route("/<path:path>")
-    def index(path):
-        return send_from_directory(app.static_folder, "index.html")
+    @app.route("/")
+    @app.route("/dashboard")
+    @app.route("/workflow")
+    @app.route("/workflow/<path:path>")
+    def index(path=None):
+        return send_from_directory(app.static_folder,'index.html')
 
     rest_api = Api(prefix='/api', errors=errors)
     rest_api.add_resource(DagRunApi, '/dagrun/<dag_id>/<execution_date>')
@@ -46,4 +49,5 @@ def create_app(object_name):
 
     rest_api.init_app(app)
     CORS(app)
+
     return app
