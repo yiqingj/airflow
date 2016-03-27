@@ -9,6 +9,7 @@ import datetime
 
 from airflow import models
 from airflow.operators.dummy_operator import DummyOperator
+import pytz
 
 
 class DagTest(unittest.TestCase):

@@ -2,6 +2,7 @@ import sys
 
 import os
 import socket
+import pytz
 
 from functools import wraps
 from datetime import datetime, timedelta
@@ -125,7 +126,7 @@ def duration_f(v, c, m, p):
 def datetime_f(v, c, m, p):
     attr = getattr(m, p)
     dttm = attr.isoformat() if attr else ''
-    if datetime.now().isoformat()[:4] == dttm[:4]:
+    if datetime.now(pytz.utc).isoformat()[:4] == dttm[:4]:
         dttm = dttm[5:]
     return Markup("<nobr>{}</nobr>".format(dttm))
 
@@ -1009,7 +1010,7 @@ class Airflow(BaseView):
         # Flagging tasks as successful
         session = settings.Session()
         task_ids = [task_id]
-        end_date = ((dag.latest_execution_date or datetime.now())
+        end_date = ((dag.latest_execution_date or datetime.now(pytz.utc))
                     if future else execution_date)
 
         if 'start_date' in dag.default_args:
@@ -1123,7 +1124,7 @@ class Airflow(BaseView):
         if base_date:
             base_date = dateutil.parser.parse(base_date)
         else:
-            base_date = dag.latest_execution_date or datetime.now()
+            base_date = dag.latest_execution_date or datetime.now(pytz.utc)
 
         dates = dag.date_range(base_date, num=-abs(num_runs))
         min_date = dates[0] if dates else datetime(2000, 1, 1)
@@ -1267,7 +1268,7 @@ class Airflow(BaseView):
         if dttm:
             dttm = dateutil.parser.parse(dttm)
         else:
-            dttm = dag.latest_execution_date or datetime.now().date()
+            dttm = dag.latest_execution_date or datetime.now(pytz.utc).date()
 
         DR = models.DagRun
         drs = (
@@ -1343,7 +1344,7 @@ class Airflow(BaseView):
         if base_date:
             base_date = dateutil.parser.parse(base_date)
         else:
-            base_date = dag.latest_execution_date or datetime.now()
+            base_date = dag.latest_execution_date or datetime.now(pytz.utc)
 
         dates = dag.date_range(base_date, num=-abs(num_runs))
         min_date = dates[0] if dates else datetime(2000, 1, 1)
@@ -1403,7 +1404,7 @@ class Airflow(BaseView):
         if base_date:
             base_date = dateutil.parser.parse(base_date)
         else:
-            base_date = dag.latest_execution_date or datetime.now()
+            base_date = dag.latest_execution_date or datetime.now(pytz.utc)
 
         dates = dag.date_range(base_date, num=-abs(num_runs))
         min_date = dates[0] if dates else datetime(2000, 1, 1)
@@ -1480,7 +1481,7 @@ class Airflow(BaseView):
             DagModel).filter(DagModel.dag_id == dag_id).first()
 
         if orm_dag:
-            orm_dag.last_expired = datetime.now()
+            orm_dag.last_expired = datetime.now(pytz.utc)
             session.merge(orm_dag)
         session.commit()
         session.close()
@@ -1518,7 +1519,7 @@ class Airflow(BaseView):
         if dttm:
             dttm = dateutil.parser.parse(dttm)
         else:
-            dttm = dag.latest_execution_date or datetime.now().date()
+            dttm = dag.latest_execution_date or datetime.now(pytz.utc).date()
 
         form = DateTimeForm(data={'execution_date': dttm})
 
@@ -1530,7 +1531,7 @@ class Airflow(BaseView):
         tasks = []
         data = []
         for i, ti in enumerate(tis):
-            end_date = ti.end_date or datetime.now()
+            end_date = ti.end_date or datetime.now(pytz.utc)
             tasks += [ti.task_id]
             color = State.color(ti.state)
             data.append({
@@ -1873,7 +1874,7 @@ class ChartModelView(wwwutils.DataProfilingMixin, AirflowModelView):
             model.iteration_no += 1
         if not model.user_id and current_user and hasattr(current_user, 'id'):
             model.user_id = current_user.id
-        model.last_modified = datetime.now()
+        model.last_modified = datetime.now(pytz.utc)
 
 
 class KnowEventView(wwwutils.DataProfilingMixin, AirflowModelView):
@@ -1991,9 +1992,9 @@ class DagRunModelView(ModelViewOnly):
                 count += 1
                 dr.state = target_state
                 if target_state == State.RUNNING:
-                    dr.start_date = datetime.now()
+                    dr.start_date = datetime.now(pytz.utc)
                 else:
-                    dr.end_date = datetime.now()
+                    dr.end_date = datetime.now(pytz.utc)
             session.commit()
             flash(
                 "{count} dag runs were set to '{target_state}'".format(**locals()))

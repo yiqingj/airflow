@@ -44,9 +44,9 @@ def upgrade():
             sa.Column('is_paused', sa.Boolean(), nullable=True),
             sa.Column('is_subdag', sa.Boolean(), nullable=True),
             sa.Column('is_active', sa.Boolean(), nullable=True),
-            sa.Column('last_scheduler_run', sa.DateTime(), nullable=True),
-            sa.Column('last_pickled', sa.DateTime(), nullable=True),
-            sa.Column('last_expired', sa.DateTime(), nullable=True),
+            sa.Column('last_scheduler_run', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('last_pickled', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('last_expired', sa.DateTime(timezone=True), nullable=True),
             sa.Column('scheduler_lock', sa.Boolean(), nullable=True),
             sa.Column('pickle_id', sa.Integer(), nullable=True),
             sa.Column('fileloc', sa.String(length=2000), nullable=True),
@@ -58,7 +58,7 @@ def upgrade():
             'dag_pickle',
             sa.Column('id', sa.Integer(), nullable=False),
             sa.Column('pickle', sa.PickleType(), nullable=True),
-            sa.Column('created_dttm', sa.DateTime(), nullable=True),
+            sa.Column('created_dttm', sa.DateTime(timezone=True), nullable=True),
             sa.Column('pickle_hash', sa.BigInteger(), nullable=True),
             sa.PrimaryKeyConstraint('id')
         )
@@ -66,7 +66,7 @@ def upgrade():
         op.create_table(
             'import_error',
             sa.Column('id', sa.Integer(), nullable=False),
-            sa.Column('timestamp', sa.DateTime(), nullable=True),
+            sa.Column('timestamp', sa.DateTime(timezone=True), nullable=True),
             sa.Column('filename', sa.String(length=1024), nullable=True),
             sa.Column('stacktrace', sa.Text(), nullable=True),
             sa.PrimaryKeyConstraint('id')
@@ -78,9 +78,9 @@ def upgrade():
             sa.Column('dag_id', sa.String(length=250), nullable=True),
             sa.Column('state', sa.String(length=20), nullable=True),
             sa.Column('job_type', sa.String(length=30), nullable=True),
-            sa.Column('start_date', sa.DateTime(), nullable=True),
-            sa.Column('end_date', sa.DateTime(), nullable=True),
-            sa.Column('latest_heartbeat', sa.DateTime(), nullable=True),
+            sa.Column('start_date', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('end_date', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('latest_heartbeat', sa.DateTime(timezone=True), nullable=True),
             sa.Column('executor_class', sa.String(length=500), nullable=True),
             sa.Column('hostname', sa.String(length=500), nullable=True),
             sa.Column('unixname', sa.String(length=1000), nullable=True),
@@ -103,11 +103,11 @@ def upgrade():
         op.create_table(
             'log',
             sa.Column('id', sa.Integer(), nullable=False),
-            sa.Column('dttm', sa.DateTime(), nullable=True),
+            sa.Column('dttm', sa.DateTime(timezone=True), nullable=True),
             sa.Column('dag_id', sa.String(length=250), nullable=True),
             sa.Column('task_id', sa.String(length=250), nullable=True),
             sa.Column('event', sa.String(length=30), nullable=True),
-            sa.Column('execution_date', sa.DateTime(), nullable=True),
+            sa.Column('execution_date', sa.DateTime(timezone=True), nullable=True),
             sa.Column('owner', sa.String(length=500), nullable=True),
             sa.PrimaryKeyConstraint('id')
         )
@@ -116,9 +116,9 @@ def upgrade():
             'sla_miss',
             sa.Column('task_id', sa.String(length=250), nullable=False),
             sa.Column('dag_id', sa.String(length=250), nullable=False),
-            sa.Column('execution_date', sa.DateTime(), nullable=False),
+            sa.Column('execution_date', sa.DateTime(timezone=True), nullable=False),
             sa.Column('email_sent', sa.Boolean(), nullable=True),
-            sa.Column('timestamp', sa.DateTime(), nullable=True),
+            sa.Column('timestamp', sa.DateTime(timezone=True), nullable=True),
             sa.Column('description', sa.Text(), nullable=True),
             sa.PrimaryKeyConstraint('task_id', 'dag_id', 'execution_date')
         )
@@ -137,9 +137,9 @@ def upgrade():
             'task_instance',
             sa.Column('task_id', sa.String(length=250), nullable=False),
             sa.Column('dag_id', sa.String(length=250), nullable=False),
-            sa.Column('execution_date', sa.DateTime(), nullable=False),
-            sa.Column('start_date', sa.DateTime(), nullable=True),
-            sa.Column('end_date', sa.DateTime(), nullable=True),
+            sa.Column('execution_date', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('start_date', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('end_date', sa.DateTime(timezone=True), nullable=True),
             sa.Column('duration', sa.Integer(), nullable=True),
             sa.Column('state', sa.String(length=20), nullable=True),
             sa.Column('try_number', sa.Integer(), nullable=True),
@@ -205,7 +205,7 @@ def upgrade():
             sa.Column('default_params', sa.String(length=5000), nullable=True),
             sa.Column('x_is_date', sa.Boolean(), nullable=True),
             sa.Column('iteration_no', sa.Integer(), nullable=True),
-            sa.Column('last_modified', sa.DateTime(), nullable=True),
+            sa.Column('last_modified', sa.DateTime(timezone=True), nullable=True),
             sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
             sa.PrimaryKeyConstraint('id')
         )
@@ -214,8 +214,8 @@ def upgrade():
             'known_event',
             sa.Column('id', sa.Integer(), nullable=False),
             sa.Column('label', sa.String(length=200), nullable=True),
-            sa.Column('start_date', sa.DateTime(), nullable=True),
-            sa.Column('end_date', sa.DateTime(), nullable=True),
+            sa.Column('start_date', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('end_date', sa.DateTime(timezone=True), nullable=True),
             sa.Column('user_id', sa.Integer(), nullable=True),
             sa.Column('known_event_type_id', sa.Integer(), nullable=True),
             sa.Column('description', sa.Text(), nullable=True),
@@ -232,10 +232,10 @@ def upgrade():
             sa.Column('value', sa.PickleType(), nullable=True),
             sa.Column(
                 'timestamp',
-                sa.DateTime(),
+                sa.DateTime(timezone=True),
                 default=func.now(),
                 nullable=False),
-            sa.Column('execution_date', sa.DateTime(), nullable=False),
+            sa.Column('execution_date', sa.DateTime(timezone=True), nullable=False),
             sa.Column('task_id', sa.String(length=250), nullable=False),
             sa.Column('dag_id', sa.String(length=250), nullable=False),
             sa.PrimaryKeyConstraint('id')
