@@ -1,3 +1,5 @@
+import iso8601
+import pytz
 from flask import abort, current_app, request
 from flask.ext.restful import Resource, fields, marshal_with
 from airflow.models import DagRun, Task, TaskInstance
@@ -40,13 +42,13 @@ class DagRunApi(Resource):
     @provide_session
     def get(self, dag_id=None, execution_date=None, session=None):
         run = session.query(DagRun).filter_by(
-                dag_id=dag_id,
-                execution_date=execution_date).first()
+            dag_id=dag_id,
+            execution_date=execution_date).first()
         if not run:
             abort(404)
         task_runs = session.query(TaskInstance).filter(
-                TaskInstance.dag_id == run.dag_id,
-                TaskInstance.execution_date == run.execution_date).all()
+            TaskInstance.dag_id == run.dag_id,
+            TaskInstance.execution_date == run.execution_date).all()
         setattr(run, 'taskRuns', task_runs)
         return run
 
@@ -69,15 +71,15 @@ class DagRunListApi(Resource):
         if state:
             qry = qry.filter(DagRun.state == state)
         qry = qry.order_by(
-                DagRun.execution_date.desc()
+            DagRun.execution_date.desc()
         ).limit(per_page).offset((page - 1) * per_page)
 
         runs = qry.all()
 
         for run in runs:
             task_runs = session.query(TaskInstance).filter(
-                    TaskInstance.dag_id == run.dag_id,
-                    TaskInstance.execution_date == run.execution_date).all()
+                TaskInstance.dag_id == run.dag_id,
+                TaskInstance.execution_date == run.execution_date).all()
             setattr(run, 'taskRuns', task_runs)
         if page == 1 and len(runs) < per_page:
             total = len(runs)
@@ -92,27 +94,29 @@ class DagRunListApi(Resource):
         run_id = req.get('runId')
         dag_id = req.get('dagId')
         execution_date = req.get('executionDate')
+        execution_date = iso8601.parse_date(execution_date)
+        execution_date = execution_date.astimezone(pytz.utc)
 
         skipped = [task.get('taskId') for task in req.get('taskRuns') if bool(task.get('skipped'))]
 
         dr = session.query(DagRun).filter(
-                DagRun.dag_id == dag_id, DagRun.run_id == run_id).first()
+            DagRun.dag_id == dag_id, DagRun.run_id == run_id).first()
         if dr:
             raise DuplicateRecordException
         dag_run = DagRun(
-                run_id=run_id,
-                dag_id=dag_id,
-                state=State.RUNNING,
-                execution_date=execution_date,
-                conf=req.get('params')
+            run_id=run_id,
+            dag_id=dag_id,
+            state=State.RUNNING,
+            execution_date=execution_date,
+            conf=req.get('params')
         )
         session.add(dag_run)
         tasks = session.query(Task).filter(Task.dag_id == dag_id).all()
         for t in tasks:
             task_run = TaskInstance(
-                    dag_id=dag_id,
-                    task_id=t.task_id,
-                    execution_date=execution_date)
+                dag_id=dag_id,
+                task_id=t.task_id,
+                execution_date=execution_date)
             if t.task_id in skipped:
                 task_run.state = State.SKIPPED
             task_run.upstreams = t.upstreams
