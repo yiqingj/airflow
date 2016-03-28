@@ -478,7 +478,6 @@ class CLIFactory(object):
     args = {
         # Shared
         'dag_id': Arg(("dag_id",), "The id of the dag"),
-        'dag_id_optional': Arg(("-d", "--dag_id",), "The id of the dag"),
         'task_id': Arg(("task_id",), "The id of the task"),
         'execution_date': Arg(
             ("execution_date",), help="The execution date of the DAG",
