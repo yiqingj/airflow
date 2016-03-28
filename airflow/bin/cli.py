@@ -723,7 +723,7 @@ class CLIFactory(object):
         }, {
             'func': scheduler,
             'help': "Start a scheduler scheduler instance",
-            'args': ('dag_id_optional', 'subdir', 'num_runs', 'do_pickle'),
+            'args': ('dag_id_opt', 'subdir', 'num_runs', 'do_pickle'),
         }, {
             'func': worker,
             'help': "Start a Celery worker node",
