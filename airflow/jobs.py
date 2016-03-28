@@ -29,6 +29,8 @@ import socket
 import subprocess
 import sys
 from time import sleep
+import pytz
+from dateutil.tz import tzlocal
 
 from git import Remote, Repo, FetchInfo
 import os
@@ -60,9 +62,9 @@ class BaseJob(Base, LoggingMixin):
     dag_id = Column(String(ID_LEN),)
     state = Column(String(20))
     job_type = Column(String(30))
-    start_date = Column(DateTime())
-    end_date = Column(DateTime())
-    latest_heartbeat = Column(DateTime())
+    start_date = Column(DateTime(timezone=True))
+    end_date = Column(DateTime(timezone=True))
+    latest_heartbeat = Column(DateTime(timezone=True))
     executor_class = Column(String(500))
     hostname = Column(String(500))
     unixname = Column(String(1000))
@@ -84,22 +86,22 @@ class BaseJob(Base, LoggingMixin):
         self.hostname = socket.gethostname()
         self.executor = executor
         self.executor_class = executor.__class__.__name__
-        self.start_date = datetime.now()
-        self.latest_heartbeat = datetime.now()
+        self.start_date = datetime.now(pytz.utc)
+        self.latest_heartbeat = datetime.now(pytz.utc)
         self.heartrate = heartrate
         self.unixname = getpass.getuser()
         super(BaseJob, self).__init__(*args, **kwargs)
 
     def is_alive(self):
         return (
-            (datetime.now() - self.latest_heartbeat).seconds <
+            (datetime.now(pytz.utc) - self.latest_heartbeat).seconds <
             (conf.getint('scheduler', 'JOB_HEARTBEAT_SEC') * 2.1)
         )
 
     def kill(self):
         session = settings.Session()
         job = session.query(BaseJob).filter(BaseJob.id == self.id).first()
-        job.end_date = datetime.now()
+        job.end_date = datetime.now(pytz.utc)
         try:
             self.on_kill()
         except:
@@ -145,11 +147,11 @@ class BaseJob(Base, LoggingMixin):
 
         if job.latest_heartbeat:
             sleep_for = self.heartrate - (
-                datetime.now() - job.latest_heartbeat).total_seconds()
+                datetime.now(pytz.utc) - job.latest_heartbeat).total_seconds()
             if sleep_for > 0:
                 sleep(sleep_for)
 
-        job.latest_heartbeat = datetime.now()
+        job.latest_heartbeat = datetime.now(pytz.utc)
 
         session.merge(job)
         session.commit()
@@ -173,7 +175,7 @@ class BaseJob(Base, LoggingMixin):
         self._execute()
 
         # Marking the success in the DB
-        self.end_date = datetime.now()
+        self.end_date = datetime.now(pytz.utc)
         self.state = State.SUCCESS
         session.merge(self)
         session.commit()
@@ -263,16 +265,16 @@ class SchedulerJob(BaseJob):
             TI.execution_date == sq.c.max_ti,
         ).all()
 
-        ts = datetime.now()
+        ts = datetime.now(pytz.utc)
         SlaMiss = models.SlaMiss
         for ti in max_tis:
             task = dag.get_task(ti.task_id)
             dttm = ti.execution_date
             if task.sla:
                 dttm = dag.following_schedule(dttm)
-                while dttm < datetime.now():
+                while dttm < datetime.now(pytz.utc):
                     following_schedule = dag.following_schedule(dttm)
-                    if following_schedule + task.sla < datetime.now():
+                    if following_schedule + task.sla < datetime.now(pytz.utc):
                         session.merge(models.SlaMiss(
                             task_id=ti.task_id,
                             dag_id=ti.dag_id,
@@ -388,9 +390,9 @@ class SchedulerJob(BaseJob):
             for dr in active_runs:
                 if (
                         dr.start_date and dag.dagrun_timeout and
-                        dr.start_date < datetime.now() - dag.dagrun_timeout):
+                        dr.start_date < datetime.now(pytz.utc) - dag.dagrun_timeout):
                     dr.state = State.FAILED
-                    dr.end_date = datetime.now()
+                    dr.end_date = datetime.now(pytz.utc)
             session.commit()
 
             qry = session.query(func.max(DagRun.execution_date)).filter_by(
@@ -412,12 +414,15 @@ class SchedulerJob(BaseJob):
                     # Migrating from previous version
                     # make the past 5 runs active
                     next_run_date = dag.date_range(latest_run, -5)[0]
+                    next_run_date = next_run_date.replace(tzinfo=tzlocal())
                 else:
                     next_run_date = min([t.start_date for t in dag.tasks])
+                    next_run_date = next_run_date.replace(tzinfo=tzlocal())
             elif dag.schedule_interval != '@once':
                 next_run_date = dag.following_schedule(last_scheduled_run)
+                next_run_date = next_run_date.replace(tzinfo=tzlocal())
             elif dag.schedule_interval == '@once' and not last_scheduled_run:
-                next_run_date = datetime.now()
+                next_run_date = datetime.now(pytz.utc)
 
             # this structure is necessary to avoid a TypeError from concatenating
             # NoneType
@@ -425,16 +430,17 @@ class SchedulerJob(BaseJob):
                 schedule_end = next_run_date
             elif next_run_date:
                 schedule_end = dag.following_schedule(next_run_date)
+                schedule_end = schedule_end.replace(tzinfo=tzlocal())
 
             if next_run_date and dag.end_date and next_run_date > dag.end_date:
                 return
 
-            if next_run_date and schedule_end and schedule_end <= datetime.now():
+            if next_run_date and schedule_end and schedule_end <= datetime.now(pytz.utc):
                 next_run = DagRun(
                     dag_id=dag.dag_id,
                     run_id='scheduled__' + next_run_date.isoformat(),
                     execution_date=next_run_date,
-                    start_date=datetime.now(),
+                    start_date=datetime.now(pytz.utc),
                     state=State.RUNNING,
                     external_trigger=False
                 )
@@ -469,9 +475,9 @@ class SchedulerJob(BaseJob):
             pickle_id = dag.pickle(session).id
 
         db_dag = session.query(DagModel).filter_by(dag_id=dag.dag_id).first()
-        last_scheduler_run = db_dag.last_scheduler_run or datetime(2000, 1, 1)
+        last_scheduler_run = db_dag.last_scheduler_run or datetime(2000, 1, 1, tzinfo=pytz.utc)
         secs_since_last = (
-            datetime.now() - last_scheduler_run).total_seconds()
+            datetime.now(pytz.utc) - last_scheduler_run).total_seconds()
         # if db_dag.scheduler_lock or
         if secs_since_last < self.heartrate:
             session.commit()
@@ -480,7 +486,7 @@ class SchedulerJob(BaseJob):
         else:
             # Taking a lock
             db_dag.scheduler_lock = True
-            db_dag.last_scheduler_run = datetime.now()
+            db_dag.last_scheduler_run = datetime.now(pytz.utc)
             session.commit()
 
         active_runs = dag.get_active_runs()  # a list of execution dates
@@ -636,7 +642,7 @@ class SchedulerJob(BaseJob):
         i = 0
         while not self.num_runs or self.num_runs > i:
             try:
-                loop_start_dttm = datetime.now()
+                loop_start_dttm = datetime.now(pytz.utc)
                 try:
                     self.prioritize_queued(executor=executor, dagbag=dagbag)
                 except Exception as e:
@@ -672,7 +678,7 @@ class SchedulerJob(BaseJob):
                         self.logger.exception(e)
                 self.logger.info("Done queuing tasks, calling the executor's "
                               "heartbeat")
-                duration_sec = (datetime.now() - loop_start_dttm).total_seconds()
+                duration_sec = (datetime.now(pytz.utc) - loop_start_dttm).total_seconds()
                 self.logger.info("Loop took: {} seconds".format(duration_sec))
                 try:
                     self.import_errors(dagbag)
@@ -762,7 +768,7 @@ class BackfillJob(BaseJob):
                 continue
 
             start_date = start_date or task.start_date
-            end_date = end_date or task.end_date or datetime.now()
+            end_date = end_date or task.end_date or datetime.now(pytz.utc)
             for dttm in self.dag.date_range(start_date, end_date=end_date):
                 ti = models.TaskInstance(task, dttm)
                 tasks_to_run[ti.key] = ti
@@ -900,7 +906,7 @@ class LocalTaskJob(BaseJob):
 
     """
     def heartbeat_callback(self):
-        if datetime.now() - self.start_date < timedelta(seconds=300):
+        if datetime.now(pytz.utc) - self.start_date < timedelta(seconds=300):
             return
         # Suicide pill
         TI = models.TaskInstance
