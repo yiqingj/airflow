@@ -30,6 +30,7 @@ import subprocess
 import sys
 from time import sleep
 import pytz
+from dateutil.tz import tzlocal
 
 from git import Remote, Repo, FetchInfo
 import os
@@ -413,10 +414,13 @@ class SchedulerJob(BaseJob):
                     # Migrating from previous version
                     # make the past 5 runs active
                     next_run_date = dag.date_range(latest_run, -5)[0]
+                    next_run_date = next_run_date.replace(tzinfo=tzlocal())
                 else:
                     next_run_date = min([t.start_date for t in dag.tasks])
+                    next_run_date = next_run_date.replace(tzinfo=tzlocal())
             elif dag.schedule_interval != '@once':
                 next_run_date = dag.following_schedule(last_scheduled_run)
+                next_run_date = next_run_date.replace(tzinfo=tzlocal())
             elif dag.schedule_interval == '@once' and not last_scheduled_run:
                 next_run_date = datetime.now(pytz.utc)
 
@@ -426,6 +430,7 @@ class SchedulerJob(BaseJob):
                 schedule_end = next_run_date
             elif next_run_date:
                 schedule_end = dag.following_schedule(next_run_date)
+                schedule_end = schedule_end.replace(tzinfo=tzlocal())
 
             if next_run_date and dag.end_date and next_run_date > dag.end_date:
                 return
@@ -470,7 +475,7 @@ class SchedulerJob(BaseJob):
             pickle_id = dag.pickle(session).id
 
         db_dag = session.query(DagModel).filter_by(dag_id=dag.dag_id).first()
-        last_scheduler_run = db_dag.last_scheduler_run or datetime(2000, 1, 1)
+        last_scheduler_run = db_dag.last_scheduler_run or datetime(2000, 1, 1, tzinfo=pytz.utc)
         secs_since_last = (
             datetime.now(pytz.utc) - last_scheduler_run).total_seconds()
         # if db_dag.scheduler_lock or

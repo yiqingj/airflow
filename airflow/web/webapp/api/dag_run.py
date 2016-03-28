@@ -94,8 +94,8 @@ class DagRunListApi(Resource):
         run_id = req.get('runId')
         dag_id = req.get('dagId')
         execution_date = req.get('executionDate')
-        execution_date = iso8601.parse_date(execution_date)
-        execution_date = execution_date.astimezone(pytz.utc)
+        # execution_date = iso8601.parse_date(execution_date)
+        # execution_date = execution_date.astimezone(pytz.utc)
 
         skipped = [task.get('taskId') for task in req.get('taskRuns') if bool(task.get('skipped'))]
 
