@@ -12,6 +12,7 @@ from dateutil.relativedelta import relativedelta  # for doctest
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from email.utils import formatdate
 import errno
 from functools import wraps
 import imp
@@ -543,6 +544,7 @@ def send_email_smtp(to, subject, html_content, files=None, dryrun=False):
     msg['Subject'] = subject
     msg['From'] = SMTP_MAIL_FROM
     msg['To'] = ", ".join(to)
+    msg["Date"] = formatdate(localtime=True)
     mime_text = MIMEText(html_content, 'html')
     msg.attach(mime_text)
 

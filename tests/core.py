@@ -12,6 +12,7 @@ from datetime import datetime, time, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import errno
+import signal
 from time import sleep
 import pytz
 
@@ -37,6 +38,8 @@ import six
 
 NUM_EXAMPLE_DAGS = 14
 DEV_NULL = '/dev/null'
+TEST_DAG_FOLDER = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)), 'dags')
 DEFAULT_DATE = datetime(2015, 1, 1)
 DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
 DEFAULT_DATE_DS = DEFAULT_DATE_ISO[:10]
@@ -48,6 +51,29 @@ try:
 except ImportError:
     # Python 3
     import pickle
+
+
+class timeout:
+    """
+    A context manager used to limit execution time.
+
+    Note -- won't work on Windows (based on signal, like Airflow timeouts)
+
+    Based on: http://stackoverflow.com/a/22348885
+    """
+    def __init__(self, seconds=1, error_message='Timeout'):
+        self.seconds = seconds
+        self.error_message = error_message
+
+    def handle_timeout(self, signum, frame):
+        raise ValueError(self.error_message)
+
+    def __enter__(self):
+        signal.signal(signal.SIGALRM, self.handle_timeout)
+        signal.alarm(self.seconds)
+
+    def __exit__(self, type, value, traceback):
+        signal.alarm(0)
 
 
 class FakeDatetime(datetime):
@@ -245,6 +271,33 @@ class CoreTest(unittest.TestCase):
                 start_date=DEFAULT_DATE,
                 end_date=DEFAULT_DATE)
             job.run()
+
+    def test_trap_executor_error(self):
+        """
+        Test for https://github.com/airbnb/airflow/pull/1220
+
+        Test that errors setting up tasks (before tasks run) are properly
+        caught
+        """
+        self.dagbag = models.DagBag(dag_folder=TEST_DAG_FOLDER)
+        dags = [
+            dag for dag in self.dagbag.dags.values()
+            if dag.dag_id in ('test_raise_executor_error',)]
+        for dag in dags:
+            dag.clear(
+                start_date=DEFAULT_DATE,
+                end_date=DEFAULT_DATE)
+        for dag in dags:
+            job = jobs.BackfillJob(
+                dag=dag,
+                start_date=DEFAULT_DATE,
+                end_date=DEFAULT_DATE)
+            # run with timeout because this creates an infinite loop if not
+            # caught
+            def run_with_timeout():
+                with timeout(seconds=15):
+                    job.run()
+            self.assertRaises(AirflowException, run_with_timeout)
 
     def test_pickling(self):
         dp = self.dag.pickle()
@@ -1124,6 +1177,18 @@ if 'PostgresOperator' in dir(operators):
                 end_date=DEFAULT_DATE,
                 force=True)
 
+class FakeSession(object):
+    def __init__(self):
+        from requests import Response
+        self.response = Response()
+        self.response.status_code = 200
+        self.response._content = 'airbnb/airflow'.encode('ascii', 'ignore')
+
+    def send(self, request, **kwargs):
+        return self.response
+
+    def prepare_request(self, request):
+        return self.response
 
 class HttpOpSensorTest(unittest.TestCase):
     def setUp(self):
@@ -1132,6 +1197,7 @@ class HttpOpSensorTest(unittest.TestCase):
         dag = DAG(TEST_DAG_ID, default_args=args)
         self.dag = dag
 
+    @mock.patch('requests.Session', FakeSession)
     def test_get(self):
         t = operators.SimpleHttpOperator(
             task_id='get_op',
@@ -1142,6 +1208,7 @@ class HttpOpSensorTest(unittest.TestCase):
             dag=self.dag)
         t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
+    @mock.patch('requests.Session', FakeSession)
     def test_get_response_check(self):
         t = operators.SimpleHttpOperator(
             task_id='get_op',
@@ -1153,6 +1220,7 @@ class HttpOpSensorTest(unittest.TestCase):
             dag=self.dag)
         t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
+    @mock.patch('requests.Session', FakeSession)
     def test_sensor(self):
         sensor = operators.HttpSensor(
             task_id='http_sensor_check',
