@@ -56,7 +56,9 @@ class BashOperator(BaseOperator):
         logging.info(self.env)
         bash_command = Template(self.bash_command).safe_substitute(self.env)
         # bash_command = self.bash_command
+        ws = context['ws']
         logging.info("tmp dir root location: \n" + gettempdir())
+        logging.info("current working directory: \n "+ws)
         with TemporaryDirectory(prefix='airflowtmp') as tmp_dir:
             with NamedTemporaryFile(dir=tmp_dir, prefix=self.task_id) as f:
 
@@ -66,8 +68,7 @@ class BashOperator(BaseOperator):
                 logging.info("Temporary script "
                              "location :{0}".format(fname))
                 logging.info("Running command: " + bash_command)
-                ws = context['ws']
-                logging.info("work directory: " + ws)
+
                 if not os.path.exists(ws):
                     try:
                         os.makedirs(ws)
