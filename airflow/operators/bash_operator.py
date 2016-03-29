@@ -1,7 +1,6 @@
 
 from builtins import bytes
 import logging
-import sys
 import os
 from string import Template
 from subprocess import Popen, STDOUT, PIPE
