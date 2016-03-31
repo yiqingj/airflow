@@ -926,7 +926,7 @@ class LocalTaskJob(BaseJob):
             job_id=self.id,
             pool=self.pool,
         )
-        # print('local job command : {}'.format(command))
+        print('local job command : {}'.format(command))
         self.process = subprocess.Popen(['bash', '-c', command])
         return_code = None
         while return_code is None:

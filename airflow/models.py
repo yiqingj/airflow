@@ -1446,6 +1446,17 @@ class TaskInstance(Base):
         else:
             return pull_fn(task_id=task_ids)
 
+    def expire_older_versions(self, session):
+        TI = TaskInstance
+        if self.version > 0:
+            for r in session.query(TI).filter(
+                            TI.task_id == self.task_id,
+                            TI.dag_id == self.dag_id,
+                            TI.version < self.version):
+                r.expired = True
+                if not r.state:
+                    r.state = State.SKIPPED
+        # session.commit()
 
 class Log(Base):
     """
@@ -2224,6 +2235,7 @@ class DAG(LoggingMixin):
         self.dag_id = dag_id
         self.start_date = start_date
         self.end_date = end_date
+        self.schedule_interval_raw = schedule_interval
         self.schedule_interval = schedule_interval
         if schedule_interval in cron_presets:
             self._schedule_interval = cron_presets.get(schedule_interval)

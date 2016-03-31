@@ -85,7 +85,9 @@ class TaskInstanceListApi(Resource):
         dag_run.version += 1  # jump dag run version for each task re-run
         dag_run.state = State.RUNNING
 
-        tasks = session.query(Task).filter(Task.dag_id == dag_id).all()
+        tasks = session.query(TaskInstance).filter(TaskInstance.dag_id == dag_id,
+                                                   TaskInstance.execution_date == execution_date,
+                                                   ~TaskInstance.expired).all()
         task = None
         for t in tasks:
             if t.task_id == task_id:
@@ -94,24 +96,36 @@ class TaskInstanceListApi(Resource):
         if not task:
             abort(400)
 
+        scheduled = []  # avoid duplicate
         if mode == 'single':
             self.schedule_task(task, tasks, execution_date, dag_run.version, session,
-                               is_single=True)
+                               is_single=True, scheduled=scheduled)
         elif mode == 'upstream':
-            scheduled = []  # avoid duplicate
             self.schedule_task(task, tasks, execution_date, dag_run.version, session,
                                is_upstream=True, scheduled=scheduled)
         elif mode == 'downstream':
-            scheduled = []  # avoid duplicate
             self.schedule_task(task, tasks, execution_date, dag_run.version, session,
                                is_upstream=False, scheduled=scheduled)
 
+        for t in tasks:
+            if t.state == State.FAILED and t.task_id not in scheduled:
+                TI = TaskInstance
+                task_run = TI(
+                    task_id=t.task_id,
+                    dag_id=t.dag_id,
+                    execution_date=execution_date)
+                task_run.version = dag_run.version
+                task_run.upstreams = t.upstreams
+                task_run.downstreams = t.downstreams
+                task_run.expire_older_versions(session)
+                task_run.state = 'skipped'
+                session.merge(task_run)
         session.commit()
 
         return req
 
     def schedule_task(self, task, tasks, execution_date, version, session, is_upstream=False,
-                      is_single=False, scheduled=[]):
+                      is_single=False, scheduled=None):
         TI = TaskInstance
         task_run = TI(
             task_id=task.task_id,
@@ -120,15 +134,9 @@ class TaskInstanceListApi(Resource):
         task_run.version = version
         task_run.upstreams = task.upstreams
         task_run.downstreams = task.downstreams
-        if version > 0:
-            for r in session.query(TI).filter(
-                            TI.task_id == task.task_id,
-                            TI.dag_id == task.dag_id,
-                            TI.version < version):
-                r.expired = True
-                if not r.state:
-                    r.state = State.SKIPPED
-        scheduled.append(task.task_id)
+        task_run.expire_older_versions(session)
+        if scheduled:
+            scheduled.append(task.task_id)
         session.merge(task_run)
         if is_single:
             return
