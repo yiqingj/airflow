@@ -652,6 +652,7 @@ class SchedulerJob(BaseJob):
                 try:
                     dagbag.collect_remote_dags(only_if_updated=True)
                     if i % self.refresh_dags_every == 0:
+                        dagbag.collect_dags()
                         dagbag.deactivate_inactive_dags()
                 except:
                     self.logger.error("Failed at reloading the dagbag")
@@ -921,6 +922,7 @@ class LocalTaskJob(BaseJob):
             job_id=self.id,
             pool=self.pool,
         )
+        # print('local job command : {}'.format(command))
         self.process = subprocess.Popen(['bash', '-c', command])
         return_code = None
         while return_code is None:
