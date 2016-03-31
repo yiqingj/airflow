@@ -3,7 +3,8 @@ import pytz
 from flask import abort, current_app, request
 from flask.ext.restful import Resource, fields, marshal_with
 from airflow.models import DagRun, Task, TaskInstance
-from airflow.utils import provide_session, State
+from airflow.utils.db import provide_session
+from airflow.utils.state import State
 from ..errors import DuplicateRecordException
 from .parsers import (
     dag_run_parser

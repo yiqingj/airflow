@@ -1097,7 +1097,7 @@ class TaskInstance(Base):
             msg = "Starting attempt {attempt} of {total}".format(
                 attempt=self.try_number % (task.retries + 1) + 1,
                 total=task.retries + 1)
-            self.start_date = datetime.now()
+            self.start_date = datetime.now(pytz.utc)
 
             if not mark_success and self.state != State.QUEUED and (
                     self.pool or self.task.dag.concurrency_reached):

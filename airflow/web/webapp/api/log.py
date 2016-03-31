@@ -1,7 +1,7 @@
 from flask import abort, current_app, make_response
 from flask.ext.restful import Resource, fields, marshal_with
 from flask._compat import PY2
-from airflow.utils import provide_session, State
+from airflow.utils.db import provide_session
 from airflow.models import TaskInstance
 from airflow import configuration as conf
 import os, socket

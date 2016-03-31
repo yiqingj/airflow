@@ -1,7 +1,7 @@
 from flask import abort, request
 from flask.ext.restful import Resource, fields, marshal_with
 from airflow.models import TaskInstance, DagRun, Task, State
-from airflow.utils import provide_session
+from airflow.utils.db import provide_session
 from .parsers import (
     pagination_parser,
     task_run_parser,
