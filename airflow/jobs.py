@@ -38,9 +38,14 @@ import os
 from sqlalchemy import Column, Integer, String, DateTime, func, Index, or_
 from sqlalchemy.orm.session import make_transient
 
-from airflow import executors, models, settings, utils
+from airflow import executors, models, settings
 from airflow import configuration as conf
-from airflow.utils import AirflowException, State, LoggingMixin
+from airflow.exceptions import AirflowException
+from airflow.utils.state import State
+from airflow.utils.db import provide_session, pessimistic_connection_handling
+from airflow.utils.email import send_email
+from airflow.utils.logging import LoggingMixin
+from airflow.utils import asciiart
 
 
 Base = models.Base
@@ -238,7 +243,7 @@ class SchedulerJob(BaseJob):
 
         self.heartrate = conf.getint('scheduler', 'SCHEDULER_HEARTBEAT_SEC')
 
-    @utils.provide_session
+    @provide_session
     def manage_slas(self, dag, session=None):
         """
         Finding all tasks that have SLAs defined, and sending alert emails
@@ -327,12 +332,11 @@ class SchedulerJob(BaseJob):
                 self.logger.info(' --------------> ABOUT TO CALL SLA MISS CALL BACK ')
                 dag.sla_miss_callback(dag, task_list, blocking_task_list, slas, blocking_tis)
                 notification_sent = True
-            from airflow import ascii
             email_content = """\
             Here's a list of tasks thas missed their SLAs:
             <pre><code>{task_list}\n<code></pre>
             Blocking tasks:
-            <pre><code>{blocking_task_list}\n{ascii.bug}<code></pre>
+            <pre><code>{blocking_task_list}\n{asciiart.bug}<code></pre>
             """.format(**locals())
             emails = []
             for t in dag.tasks:
@@ -345,7 +349,7 @@ class SchedulerJob(BaseJob):
                         if email not in emails:
                             emails.append(email)
             if emails and len(slas):
-                utils.send_email(
+                send_email(
                     emails,
                     "[airflow] SLA miss on DAG=" + dag.dag_id,
                     email_content)
@@ -402,7 +406,9 @@ class SchedulerJob(BaseJob):
                             DagRun.run_id.like(DagRun.ID_PREFIX+'%')))
             last_scheduled_run = qry.scalar()
             next_run_date = None
-            if not last_scheduled_run:
+            if dag.schedule_interval == '@once' and not last_scheduled_run:
+                next_run_date = datetime.now()
+            elif not last_scheduled_run:
                 # First run
                 TI = models.TaskInstance
                 latest_run = (
@@ -421,8 +427,6 @@ class SchedulerJob(BaseJob):
             elif dag.schedule_interval != '@once':
                 next_run_date = dag.following_schedule(last_scheduled_run)
                 next_run_date = next_run_date.replace(tzinfo=tzlocal())
-            elif dag.schedule_interval == '@once' and not last_scheduled_run:
-                next_run_date = datetime.now(pytz.utc)
 
             # this structure is necessary to avoid a TypeError from concatenating
             # NoneType
@@ -535,7 +539,7 @@ class SchedulerJob(BaseJob):
 
         session.close()
 
-    @utils.provide_session
+    @provide_session
     def prioritize_queued(self, session, executor, dagbag):
         # Prioritizing queued task instances
 
@@ -631,7 +635,7 @@ class SchedulerJob(BaseJob):
             sys.exit(1)
         signal.signal(signal.SIGINT, signal_handler)
 
-        utils.pessimistic_connection_handling()
+        pessimistic_connection_handling()
 
         logging.basicConfig(level=logging.DEBUG)
         self.logger.info("Starting the scheduler")

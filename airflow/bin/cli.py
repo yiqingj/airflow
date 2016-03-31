@@ -14,11 +14,14 @@ from dateutil.parser import parse as parsedate
 import json
 
 import airflow
-from airflow import jobs, settings, utils
+from airflow import jobs, settings
 from airflow import configuration as conf
 from airflow.executors import DEFAULT_EXECUTOR
 from airflow.models import DagModel, DagBag, TaskInstance, DagPickle, DagRun
-from airflow.utils import AirflowException, State
+from airflow.utils import db as db_utils
+from airflow.utils import logging as logging_utils
+from airflow.utils.state import State
+from airflow.exceptions import AirflowException
 
 DAGS_FOLDER = os.path.expanduser(conf.get('core', 'DAGS_FOLDER'))
 
@@ -83,7 +86,8 @@ def backfill(args, dag=None):
             mark_success=args.mark_success,
             include_adhoc=args.include_adhoc,
             local=args.local,
-            donot_pickle=(args.donot_pickle or conf.getboolean('core', 'donot_pickle')),
+            donot_pickle=(args.donot_pickle or
+                          conf.getboolean('core', 'donot_pickle')),
             ignore_dependencies=args.ignore_dependencies,
             pool=args.pool)
 
@@ -138,7 +142,7 @@ def set_is_paused(is_paused, args, dag=None):
 
 def run(args, dag=None):
 
-    utils.pessimistic_connection_handling()
+    db_utils.pessimistic_connection_handling()
     if dag:
         args.dag_id = dag.dag_id
 
@@ -240,10 +244,10 @@ def run(args, dag=None):
         remote_log_location = filename.replace(log_base, remote_base)
         # S3
         if remote_base.startswith('s3:/'):
-            utils.S3Log().write(log, remote_log_location)
+            logging_utils.S3Log().write(log, remote_log_location)
         # GCS
         elif remote_base.startswith('gs:/'):
-            utils.GCSLog().write(
+            logging_utils.GCSLog().write(
                 log,
                 remote_log_location,
                 append=True)
@@ -336,6 +340,8 @@ def webserver(args):
     from airflow.www.app import cached_app
     app = cached_app(conf)
     workers = args.workers or conf.get('webserver', 'workers')
+    worker_timeout = (args.worker_timeout or
+                      conf.get('webserver', 'webserver_worker_timeout'))
     if args.debug:
         print(
             "Starting the web server on port {0} and host {1}.".format(
@@ -345,10 +351,10 @@ def webserver(args):
         print(
             'Running the Gunicorn server with {workers} {args.workerclass}'
             'workers on host {args.hostname} and port '
-            '{args.port}...'.format(**locals()))
+            '{args.port} with a timeout of {worker_timeout}...'.format(**locals()))
         sp = subprocess.Popen([
             'gunicorn', '-w', str(args.workers), '-k', str(args.workerclass),
-            '-t', '120', '-b', args.hostname + ':' + str(args.port),
+            '-t', str(args.worker_timeout), '-b', args.hostname + ':' + str(args.port),
             'airflow.www.app:cached_app()'])
         sp.wait()
 
@@ -427,7 +433,7 @@ def worker(args):
 
 def initdb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
-    utils.initdb()
+    db_utils.initdb()
     print("Done.")
 
 
@@ -438,14 +444,14 @@ def resetdb(args):
             "Proceed? (y/n)").upper() == "Y":
         logging.basicConfig(level=settings.LOGGING_LEVEL,
                             format=settings.SIMPLE_LOG_FORMAT)
-        utils.resetdb()
+        db_utils.resetdb()
     else:
         print("Bail.")
 
 
 def upgradedb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
-    utils.upgradedb()
+    db_utils.upgradedb()
 
 
 def version(args):  # noqa
@@ -584,6 +590,11 @@ class CLIFactory(object):
             default=conf.get('webserver', 'WORKER_CLASS'),
             choices=['sync', 'eventlet', 'gevent', 'tornado'],
             help="The worker class to use for gunicorn"),
+        'worker_timeout': Arg(
+            ("-t", "--worker_timeout"),
+            default=conf.get('webserver', 'WEB_SERVER_WORKER_TIMEOUT'),
+            type=int,
+            help="The timeout for waiting on webserver workers"),
         'hostname': Arg(
             ("-hn", "--hostname"),
             default=conf.get('webserver', 'WEB_SERVER_HOST'),
@@ -706,7 +717,8 @@ class CLIFactory(object):
         }, {
             'func': webserver,
             'help': "Start a Airflow webserver instance",
-            'args': ('port', 'workers', 'workerclass', 'hostname', 'debug'),
+            'args': ('port', 'workers', 'workerclass', 'worker_timeout', 'hostname',
+                     'debug'),
         }, {
             'func': web,
             'help': "Start a Airflow webserver instance",
