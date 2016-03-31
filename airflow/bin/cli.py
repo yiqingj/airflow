@@ -144,11 +144,11 @@ def run(args, dag=None):
 
     # Setting up logging
     log_base = os.path.expanduser(conf.get('core', 'BASE_LOG_FOLDER'))
-    directory = log_base + "/{args.dag_id}/{args.task_id}".format(args=args)
+    iso = args.execution_date.isoformat()
+    directory = log_base + "/{args.dag_id}/{args.task_id}/{iso}".format(args=args, iso=iso)
     if not os.path.exists(directory):
         os.makedirs(directory)
-    iso = args.execution_date.isoformat()
-    filename = "{directory}/{iso}".format(**locals())
+    filename = "{directory}/{version}".format(version=args.version, directory=directory)
 
     logging.root.handlers = []
     logging.basicConfig(
@@ -168,10 +168,9 @@ def run(args, dag=None):
         dag = dag_pickle.pickle
     task = dag.get_task(task_id=args.task_id)
 
-    ti = TaskInstance(task, args.execution_date)
+    ti = TaskInstance(task, args.execution_date, version=args.version)
 
     if args.local:
-        print("Logging into: " + filename)
         run_job = jobs.LocalTaskJob(
             task_instance=ti,
             mark_success=args.mark_success,
@@ -568,6 +567,7 @@ class CLIFactory(object):
             ("-p", "--pickle"),
             "Serialized pickle object of the entire dag (used internally)"),
         'job_id': Arg(("-j", "--job_id"), argparse.SUPPRESS),
+        'version': Arg(("-v", "--version"), default=0, type=int, help="task version"),
         # webserver
         'port': Arg(
             ("-p", "--port"),
@@ -678,7 +678,7 @@ class CLIFactory(object):
                 'dag_id', 'task_id', 'execution_date', 'subdir',
                 'mark_success', 'force', 'pool',
                 'task_start_date', 'local', 'raw', 'ignore_dependencies',
-                'ship_dag', 'pickle', 'job_id'),
+                'ship_dag', 'pickle', 'job_id', 'version'),
         }, {
             'func': initdb,
             'help': "Initialize the metadata database",

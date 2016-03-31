@@ -17,7 +17,7 @@ class LogApi(Resource):
 
         if not ti:
             abort(404)
-        log_relative = "{dag_id}/{task_id}/{execution_date}".format(
+        log_relative = "{dag_id}/{task_id}/{execution_date}/{version}".format(
             **locals())
         BASE_LOG_FOLDER = os.path.expanduser(
             conf.get('core', 'BASE_LOG_FOLDER'))

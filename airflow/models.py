@@ -716,6 +716,7 @@ class TaskInstance(Base):
         cmd += "--local " if local else ""
         cmd += "--pool {pool} " if pool else ""
         cmd += "--raw " if raw else ""
+        cmd += "--version {self.version} "
         if task_start_date:
             cmd += "-s " + task_start_date.isoformat() + ' '
         if not pickle_id and dag and dag.full_filepath:
@@ -727,7 +728,7 @@ class TaskInstance(Base):
         iso = self.execution_date.isoformat()
         log = os.path.expanduser(configuration.get('core', 'BASE_LOG_FOLDER'))
         return (
-            "{log}/{self.dag_id}/{self.task_id}/{iso}.log".format(**locals()))
+            "{log}/{self.dag_id}/{self.task_id}/{iso}/{self.version}".format(**locals()))
 
     @property
     def log_url(self):
@@ -957,6 +958,7 @@ class TaskInstance(Base):
                 TI.dag_id == self.dag_id,
                 TI.task_id.in_(task.upstream_task_ids),
                 TI.execution_date == self.execution_date,
+                ~TI.expired,
                 TI.state.in_([
                     State.SUCCESS, State.FAILED,
                     State.UPSTREAM_FAILED, State.SKIPPED]),
