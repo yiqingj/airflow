@@ -294,8 +294,27 @@ paths:
         405:
           description: invalid input
 
-
-
+  /event:
+    post:
+      tags:
+        - Event
+      description: |
+        push events to be used for metrics analysis and statistics report
+      parameters:
+        -
+          name: events
+          in: body
+          required: true
+          description: events
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Event'
+      responses:
+        200:
+          description: Successful response
+        405:
+          description: invalid input
 
 
 definitions:
@@ -412,3 +431,39 @@ definitions:
           type: string
       description:
         type: string
+
+  Event:
+    type: object
+    properties:
+      name:
+        type: string
+      dimensions:
+        type: array
+        items:
+          $ref: '#/definitions/Dimension'
+      metrics:
+        type: array
+        items:
+          $ref: '#/definitions/Metric'
+
+  Metric:
+    type: object
+    properties:
+      name:
+        type: string
+        description: name of this metric
+      value:
+        type: number
+        format: double
+        description: numeric value of the metric
+
+  Dimension:
+    type: object
+    properties:
+      name:
+        type: string
+        description: Represents the name of the dimension
+      value:
+        type: string
+        description: Represents the value of the dimension
+

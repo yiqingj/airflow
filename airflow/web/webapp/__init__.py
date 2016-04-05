@@ -6,6 +6,7 @@ from .api.dag_run import DagRunApi, DagRunListApi
 from .api.dag import DagApi, DagListApi
 from .api.task import TaskListApi
 from .api.task_instance import TaskInstanceListApi, TaskInstanceApi
+from .api.event import EventListApi
 
 from .api.log import LogApi
 
@@ -46,6 +47,8 @@ def create_app(object_name):
     rest_api.add_resource(TaskInstanceApi, '/taskrun/<dag_id>/<task_id>/<execution_date>/<version>')
 
     rest_api.add_resource(LogApi, '/log/<dag_id>/<task_id>/<execution_date>/<version>')
+
+    rest_api.add_resource(EventListApi, '/event')
 
     rest_api.init_app(app)
     CORS(app)

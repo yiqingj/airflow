@@ -1,4 +1,4 @@
-from flask import abort, current_app
+from flask import abort
 from flask.ext.restful import Resource, fields, marshal_with
 from airflow.models import Task
 from airflow.utils.db import provide_session

@@ -30,3 +30,10 @@ task_run_post_parser.add_argument('taskId')
 task_run_post_parser.add_argument('dagId')
 task_run_post_parser.add_argument('executionDate', type=inputs.datetime_from_iso8601)
 task_run_post_parser.add_argument('mode')  # single, upstream, downstream
+
+
+event_parser = pagination_parser.copy()
+event_parser.add_argument('dagId')
+event_parser.add_argument('taskId')
+event_parser.add_argument('executionDate', type=inputs.datetime_from_iso8601)
+event_parser.add_argument('version', type=int)
