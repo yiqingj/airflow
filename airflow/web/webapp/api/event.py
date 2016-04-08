@@ -18,7 +18,7 @@ event_fields = {
     'downstreams': fields.List(fields.String)
 }
 
-url_string = os.environ.get('ELASTIC_SERACH_URL','17.135.86.191:9200')
+url_string = os.environ.get('ELASTIC_SERACH_URL','17.135.86.199:9200')
 urls = url_string.split(',')
 
 es = Elasticsearch(

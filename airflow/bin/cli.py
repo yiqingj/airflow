@@ -46,8 +46,10 @@ def process_subdir(subdir):
         return subdir
 
 
-def get_dag(args):
+def get_dag(args, include_remote=False):
     dagbag = DagBag(process_subdir(args.subdir))
+    if include_remote:
+        dagbag.collect_remote_dags(only_if_updated=False)
     if args.dag_id not in dagbag.dags:
         raise AirflowException('dag_id could not be found')
     return dagbag.dags[args.dag_id]
@@ -161,7 +163,7 @@ def run(args, dag=None):
         format=settings.LOG_FORMAT)
 
     if not args.pickle and not dag:
-        dag = get_dag(args)
+        dag = get_dag(args, include_remote=True)
     elif not dag:
         session = settings.Session()
         logging.info('Loading pickle id {args.pickle}'.format(**locals()))
