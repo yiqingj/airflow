@@ -30,6 +30,7 @@ class State(object):
     UP_FOR_RETRY = "up_for_retry"
     UPSTREAM_FAILED = "upstream_failed"
     SKIPPED = "skipped"
+    PENDING = "pending"
 
     state_color = {
         QUEUED: 'gray',
@@ -60,5 +61,5 @@ class State(object):
     @classmethod
     def runnable(cls):
         return [
-            None, cls.FAILED, cls.UP_FOR_RETRY, cls.UPSTREAM_FAILED,
+            None, cls.PENDING, cls.FAILED, cls.UP_FOR_RETRY, cls.UPSTREAM_FAILED,
             cls.SKIPPED, cls.QUEUED]

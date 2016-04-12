@@ -407,7 +407,7 @@ class SchedulerJob(BaseJob):
             last_scheduled_run = qry.scalar()
             next_run_date = None
             if dag.schedule_interval == '@once' and not last_scheduled_run:
-                next_run_date = datetime.now()
+                next_run_date = datetime.now(pytz.utc)
             elif not last_scheduled_run:
                 # First run
                 TI = models.TaskInstance
@@ -493,7 +493,7 @@ class SchedulerJob(BaseJob):
             db_dag.last_scheduler_run = datetime.now(pytz.utc)
             session.commit()
 
-        active_runs = dag.get_active_runs()  # a list of execution dates
+        active_runs = dag.get_active_runs()  # a list of execution dates, also update run state here
 
         self.logger.info('Getting list of tasks to skip for active runs.')
         skip_tis = set()

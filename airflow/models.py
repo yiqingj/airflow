@@ -2421,6 +2421,7 @@ class DAG(LoggingMixin):
                 TI.dag_id == run.dag_id,
                 TI.task_id.in_(self.active_task_ids),
                 TI.execution_date == run.execution_date,
+                TI.state != State.PENDING,
                 ~TI.expired
             ).all()
             if len(task_instances) >= len(self.active_tasks):

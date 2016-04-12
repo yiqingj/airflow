@@ -122,6 +122,7 @@ class DagRunListApi(Resource):
                 task_run.state = State.SKIPPED
             task_run.upstreams = t.upstreams
             task_run.downstreams = t.downstreams
+            task_run.state = State.PENDING
             session.add(task_run)
         session.commit()
         return req

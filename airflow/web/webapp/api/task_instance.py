@@ -135,6 +135,7 @@ class TaskInstanceListApi(Resource):
         task_run.upstreams = task.upstreams
         task_run.downstreams = task.downstreams
         task_run.expire_older_versions(session)
+        task_run.state = State.PENDING
         if scheduled is not None:
             scheduled.append(task.task_id)
         session.merge(task_run)
