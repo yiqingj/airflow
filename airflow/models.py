@@ -402,6 +402,7 @@ class DagBag(LoggingMixin):
                     if not info.name.split('/')[1] == bag.branch:
                         continue
                     if not (info.flags & FetchInfo.HEAD_UPTODATE) or not only_if_updated:
+                        self.logger.info('loading from git repo...')
                         dag_folder = os.path.join(base_dir, bag.name, bag.folder)
                         self.collect_dags(dag_folder, only_if_updated=only_if_updated, source=bag.name)
 
