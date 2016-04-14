@@ -18,7 +18,7 @@ event_fields = {
     'downstreams': fields.List(fields.String)
 }
 
-url_string = os.environ.get('ELASTIC_SERACH_URL','17.135.86.199:9200')
+url_string = os.environ.get('ELASTIC_SERACH_URL', '17.135.86.199:9200')
 urls = url_string.split(',')
 
 es = Elasticsearch(
@@ -50,7 +50,7 @@ class EventListApi(Resource):
             metrics = {}
             now = datetime.utcnow()
             event = {'dimensions': dimensions, 'metrics': metrics,
-                     'date': now.isoformat()}
+                     'date': now.isoformat(), 'name': r['name']}
             for d in r['dimensions']:
                 dimensions[d['name']] = d['value']
             for m in r['metrics']:

@@ -74,7 +74,15 @@
         </button>
     </div>
     <div class="row" *ngIf="showLog">
-        <pre>{{logText}}
+        <div id="log_buttons" class="btn-group-vertical pull-right" role="group">
+            <button class="btn btn-default" (click)="onLogRefresh()">
+                <span class="fa fa-refresh"></span>
+            </button>
+            <button class="btn btn-default" (click)="onLogDownload()">
+                <span class="fa fa-download"></span>
+            </button>
+        </div>
+        <pre class="pre-scrollable">{{logText}}
         </pre>
     </div>
 </div>

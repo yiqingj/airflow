@@ -21,7 +21,7 @@
 
         <div class="form-group">
             <label for="release">TARGET_RELEASE</label>
-            <select class="form-control" id="release" required>
+            <select class="form-control" id="release" [(ngModel)]="release" required>
                 <option *ngFor="#r of releases" [(value)]="r.name">{{r.name}}</option>
             </select>
         </div>

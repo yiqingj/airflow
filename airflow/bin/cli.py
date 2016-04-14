@@ -384,6 +384,14 @@ def web(args):
         sp.wait()
 
 def scheduler(args):
+    db_utils.upgradedb()
+    # reset after db upgrade, alembic will mess up the log
+    import sys
+    logging.root.handlers = []
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=settings.LOGGING_LEVEL,
+        format=settings.LOG_FORMAT)
     print(settings.HEADER)
     job = jobs.SchedulerJob(
         dag_id=args.dag_id,
