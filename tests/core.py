@@ -25,6 +25,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import signal
 from time import sleep
+import pytz
 import warnings
 
 from dateutil.relativedelta import relativedelta
@@ -900,7 +901,7 @@ class WebUiTests(unittest.TestCase):
         assert "runme_0" in response.data.decode('utf-8')
 
     def tearDown(self):
-        self.dag_bash.clear(start_date=DEFAULT_DATE, end_date=datetime.now())
+        self.dag_bash.clear(start_date=DEFAULT_DATE, end_date=datetime.now(pytz.utc))
 
 
 class WebPasswordAuthTest(unittest.TestCase):
@@ -1473,7 +1474,7 @@ if 'MySqlOperator' in dir(operators) and 'HiveOperator' in dir(operators):
             self.dag = dag
 
         def test_clear(self):
-            self.dag.clear(start_date=DEFAULT_DATE, end_date=datetime.now())
+            self.dag.clear(start_date=DEFAULT_DATE, end_date=datetime.now(pytz.utc))
 
         def test_mysql_to_hive(self):
             # import airflow.operators

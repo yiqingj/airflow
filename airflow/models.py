@@ -41,10 +41,12 @@ import sys
 import traceback
 import warnings
 from urllib.parse import urlparse
+import pytz
+from git import Repo, Remote, FetchInfo
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
-    Index, Float)
+    Index, Float, TEXT)
 from sqlalchemy import case, func, or_, and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -71,6 +73,7 @@ Base = declarative_base()
 ID_LEN = 250
 SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
 DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'DAGS_FOLDER'))
+GIT_REPO_FOLDER = os.path.expanduser(configuration.get('core', 'GIT_REPO_FOLDER'))
 XCOM_RETURN_KEY = 'return_value'
 
 ENCRYPTION_ON = False
@@ -116,7 +119,7 @@ def clear_task_instances(tis, session, activate_dag_runs=True):
         ).all()
         for dr in drs:
             dr.state = State.RUNNING
-            dr.start_date = datetime.now()
+            dr.start_date = datetime.now(pytz.utc)
 
 
 class DagBag(LoggingMixin):
@@ -149,7 +152,7 @@ class DagBag(LoggingMixin):
             sync_to_db=False):
 
         dag_folder = dag_folder or DAGS_FOLDER
-        self.logger.info("Filling up the DagBag from {}".format(dag_folder))
+
         self.dag_folder = dag_folder
         self.dags = {}
         self.sync_to_db = sync_to_db
@@ -163,6 +166,7 @@ class DagBag(LoggingMixin):
             self.collect_dags(example_dag_folder)
         self.collect_dags(dag_folder)
         if sync_to_db:
+            self.collect_remote_dags(only_if_updated=False)
             self.deactivate_inactive_dags()
 
     def size(self):
@@ -176,32 +180,32 @@ class DagBag(LoggingMixin):
         Gets the DAG out of the dictionary, and refreshes it if expired
         """
         # If asking for a known subdag, we want to refresh the parent
-        root_dag_id = dag_id
-        if dag_id in self.dags:
-            dag = self.dags[dag_id]
-            if dag.is_subdag:
-                root_dag_id = dag.parent_dag.dag_id
-
-        # If the root_dag_id is absent or expired
-        orm_dag = DagModel.get_current(root_dag_id)
-        if orm_dag and (
-                root_dag_id not in self.dags or
-                (
-                    orm_dag.last_expired and
-                    dag.last_loaded < orm_dag.last_expired
-                )
-        ):
-            # Reprocessing source file
-            found_dags = self.process_file(
-                filepath=orm_dag.fileloc, only_if_updated=False)
-
-            if found_dags and dag_id in [dag.dag_id for dag in found_dags]:
-                return self.dags[dag_id]
-            elif dag_id in self.dags:
-                del self.dags[dag_id]
+        # root_dag_id = dag_id
+        # if dag_id in self.dags:
+        #     dag = self.dags[dag_id]
+        #     if dag.is_subdag:
+        #         root_dag_id = dag.parent_dag.dag_id
+        #
+        # # If the root_dag_id is absent or expired
+        # orm_dag = DagModel.get_current(root_dag_id)
+        # if orm_dag and (
+        #         root_dag_id not in self.dags or
+        #         (
+        #             orm_dag.last_expired and
+        #             dag.last_loaded < orm_dag.last_expired
+        #         )
+        # ):
+        #     # Reprocessing source file
+        #     found_dags = self.process_file(
+        #         filepath=orm_dag.fileloc, only_if_updated=False)
+        #
+        #     if found_dags and dag_id in [dag.dag_id for dag in found_dags]:
+        #         return self.dags[dag_id]
+        #     elif dag_id in self.dags:
+        #         del self.dags[dag_id]
         return self.dags.get(dag_id)
 
-    def process_file(self, filepath, only_if_updated=True, safe_mode=True):
+    def process_file(self, filepath, only_if_updated=True, safe_mode=True, source='local'):
         """
         Given a path to a python module or zip file, this method imports
         the module and look for dag objects within it.
@@ -287,7 +291,7 @@ class DagBag(LoggingMixin):
                         dag.full_filepath = filepath
                     dag.is_subdag = False
                     dag.module_name = m.__name__
-                    self.bag_dag(dag, parent_dag=dag, root_dag=dag)
+                    self.bag_dag(dag, parent_dag=dag, root_dag=dag, source=source)
                     found_dags.append(dag)
                     found_dags += dag.subdags
 
@@ -304,7 +308,7 @@ class DagBag(LoggingMixin):
         TI = TaskInstance
         secs = (
             configuration.getint('scheduler', 'job_heartbeat_sec') * 3) + 120
-        limit_dttm = datetime.now() - timedelta(seconds=secs)
+        limit_dttm = datetime.now(pytz.utc) - timedelta(seconds=secs)
         self.logger.info(
             "Failing jobs without heartbeat after {}".format(limit_dttm))
 
@@ -331,13 +335,13 @@ class DagBag(LoggingMixin):
                         'Marked zombie job {} as failed'.format(ti))
         session.commit()
 
-    def bag_dag(self, dag, parent_dag, root_dag):
+    def bag_dag(self, dag, parent_dag, root_dag, source='local'):
         """
         Adds the DAG into the bag, recurses into sub dags.
         """
         self.dags[dag.dag_id] = dag
         dag.resolve_template_files()
-        dag.last_loaded = datetime.now()
+        dag.last_loaded = datetime.now(pytz.utc)
 
         for task in dag.tasks:
             settings.policy(task)
@@ -352,7 +356,27 @@ class DagBag(LoggingMixin):
             orm_dag.is_subdag = dag.is_subdag
             orm_dag.owners = root_dag.owner
             orm_dag.is_active = True
+            orm_dag.schedule = dag.schedule_interval_raw
+            orm_dag.params = json.dumps(dag.params)
+            orm_dag.git_repo = source
             session.merge(orm_dag)
+            # yiqing: add task into task table for web UI.
+
+            session.query(Task).filter(Task.dag_id == orm_dag.dag_id).delete()
+            for task in dag.tasks:
+
+                # orm_task = session.query(Task).filter(Task.task_id == task.task_id,
+                #                                       Task.dag_id == task.dag_id).first()
+                # if not orm_task:
+                orm_task = Task(
+                        task_id=task.task_id,
+                        dag_id=task.dag_id)
+                orm_task.operator = task.task_type
+                orm_task.upstreams = [t.task_id for t in task.upstream_list]
+                orm_task.downstreams = [t.task_id for t in task.downstream_list]
+                session.merge(orm_task)
+
+
             session.commit()
             session.close()
 
@@ -367,7 +391,8 @@ class DagBag(LoggingMixin):
     def collect_dags(
             self,
             dag_folder=None,
-            only_if_updated=True):
+            only_if_updated=True, source='local'):
+        self.logger.info("Filling up the DagBag from {}".format(dag_folder))
         """
         Given a file path or a folder, this method looks for python modules,
         imports them and adds them to the dagbag collection.
@@ -400,9 +425,37 @@ class DagBag(LoggingMixin):
                         if not any(
                                 [re.findall(p, filepath) for p in patterns]):
                             self.process_file(
-                                filepath, only_if_updated=only_if_updated)
+                                filepath, only_if_updated=only_if_updated, source=source)
                     except Exception as e:
                         logging.warning(e)
+
+    def collect_remote_dags(self, only_if_updated=True):
+        """Collection dags from git repo. in the future we might support more
+        """
+        session = settings.Session()
+        for bag in session.query(DagBagModel).filter(~DagBagModel.disabled):
+            try:
+                base_dir = configuration.get('core', 'GIT_REPO_FOLDER')
+                path = os.path.join(base_dir, bag.name)
+                if not os.path.exists(path):
+                    self.logger.info('cloning repo from {}'.format(bag.url))
+                    repo = Repo.clone_from(bag.url, path)
+                else:
+                    repo = Repo(path)
+                self.logger.info('updating repo from {}'.format(bag.url))
+                remote = Remote(repo, 'origin')
+                infos = remote.pull()
+                for info in infos:
+                    if not info.name.split('/')[1] == bag.branch:
+                        continue
+                    if not (info.flags & FetchInfo.HEAD_UPTODATE) or not only_if_updated:
+                        self.logger.info('loading from git repo...')
+                        dag_folder = os.path.join(base_dir, bag.name, bag.folder)
+                        self.collect_dags(dag_folder, only_if_updated=only_if_updated, source=bag.name)
+
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.error('dag collection failed!')
 
     def deactivate_inactive_dags(self):
         active_dag_ids = [dag.dag_id for dag in list(self.dags.values())]
@@ -600,7 +653,7 @@ class DagPickle(Base):
     """
     id = Column(Integer, primary_key=True)
     pickle = Column(PickleType(pickler=dill))
-    created_dttm = Column(DateTime, default=func.now())
+    created_dttm = Column(DateTime(timezone=True), default=func.now())
     pickle_hash = Column(Text)
 
     __tablename__ = "dag_pickle"
@@ -612,6 +665,19 @@ class DagPickle(Base):
         self.pickle_hash = hash(dag)
         self.pickle = dag
 
+from sqlalchemy.dialects.postgresql import ARRAY
+
+class Task(Base):
+    """
+    Task store the task information for web viewing purpose
+    """
+    __tablename__ = 'task'
+    task_id =Column(String(ID_LEN), primary_key=True)  # this is the task name
+    dag_id =Column(String(ID_LEN), primary_key=True)  # this is the dag name
+    operator =Column(String(50))  # the operator type of this task.=
+    upstreams =Column(ARRAY(String, dimensions=1))
+    downstreams =Column(ARRAY(String, dimensions=1))
+    code =Column(TEXT)
 
 class TaskInstance(Base):
     """
@@ -631,9 +697,9 @@ class TaskInstance(Base):
 
     task_id = Column(String(ID_LEN), primary_key=True)
     dag_id = Column(String(ID_LEN), primary_key=True)
-    execution_date = Column(DateTime, primary_key=True)
-    start_date = Column(DateTime)
-    end_date = Column(DateTime)
+    execution_date = Column(DateTime(timezone=True), primary_key=True)
+    start_date = Column(DateTime(timezone=True))
+    end_date = Column(DateTime(timezone=True))
     duration = Column(Float)
     state = Column(String(20))
     try_number = Column(Integer, default=0)
@@ -644,7 +710,14 @@ class TaskInstance(Base):
     queue = Column(String(50))
     priority_weight = Column(Integer)
     operator = Column(String(1000))
-    queued_dttm = Column(DateTime)
+    queued_dttm = Column(DateTime(timezone=True))
+    # yiqing
+    # mark expired to true for lower versions so scheduler knows to skip them(easily)
+    expired = Column(Boolean, default=False)
+    version = Column(Integer, default=0, primary_key=True)  # version of dag run, used for re-run
+    upstreams =Column(ARRAY(String, dimensions=1))
+    downstreams =Column(ARRAY(String, dimensions=1))
+
 
     __table_args__ = (
         Index('ti_dag_state', dag_id, state),
@@ -652,18 +725,24 @@ class TaskInstance(Base):
         Index('ti_pool', pool, state, priority_weight),
     )
 
-    def __init__(self, task, execution_date, state=None):
-        self.dag_id = task.dag_id
-        self.task_id = task.task_id
+    def __init__(self, task=None, execution_date=None, state=None,
+                 dag_id=None, task_id= None, version=0):
+        if task:
+            self.dag_id = task.dag_id
+            self.task_id = task.task_id
+            self.queue = task.queue
+            self.pool = task.pool
+            self.task = task
+            self.priority_weight = task.priority_weight_total
+            self.try_number = 0
+            self.test_mode = False  # can be changed when calling 'run'
+            self.force = False  # can be changed when calling 'run'
+            self.unixname = getpass.getuser()
+        else:
+            self.dag_id = dag_id
+            self.task_id = task_id
         self.execution_date = execution_date
-        self.task = task
-        self.queue = task.queue
-        self.pool = task.pool
-        self.priority_weight = task.priority_weight_total
-        self.try_number = 0
-        self.test_mode = False  # can be changed when calling 'run'
-        self.force = False  # can be changed when calling 'run'
-        self.unixname = getpass.getuser()
+        self.version = version
         if state:
             self.state = state
 
@@ -695,6 +774,7 @@ class TaskInstance(Base):
         cmd += "--local " if local else ""
         cmd += "--pool {pool} " if pool else ""
         cmd += "--raw " if raw else ""
+        cmd += "--version {self.version} "
         if not pickle_id and dag:
             if dag.full_filepath != dag.filepath:
                 cmd += "-sd DAGS_FOLDER/{dag.filepath} "
@@ -707,7 +787,7 @@ class TaskInstance(Base):
         iso = self.execution_date.isoformat()
         log = os.path.expanduser(configuration.get('core', 'BASE_LOG_FOLDER'))
         return (
-            "{log}/{self.dag_id}/{self.task_id}/{iso}.log".format(**locals()))
+            "{log}/{self.dag_id}/{self.task_id}/{iso}/{self.version}".format(**locals()))
 
     @property
     def log_url(self):
@@ -773,12 +853,13 @@ class TaskInstance(Base):
             TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
             TI.execution_date == self.execution_date,
-        ).first()
+        ).order_by(TI.version.desc()).first()
         if ti:
             self.state = ti.state
             self.start_date = ti.start_date
             self.end_date = ti.end_date
             self.try_number = ti.try_number
+            self.version = ti.version
         else:
             self.state = None
 
@@ -803,8 +884,8 @@ class TaskInstance(Base):
 
     def set_state(self, state, session):
         self.state = state
-        self.start_date = datetime.now()
-        self.end_date = datetime.now()
+        self.start_date = datetime.now(pytz.utc)
+        self.end_date = datetime.now(pytz.utc)
         session.merge(self)
 
     def is_queueable(
@@ -832,7 +913,7 @@ class TaskInstance(Base):
         :type flag_upstream_failed: boolean
         """
         # is the execution date in the future?
-        if self.execution_date > datetime.now():
+        if self.execution_date > datetime.now(pytz.utc):
             return False
         # is the task still in the retry waiting period?
         elif self.state == State.UP_FOR_RETRY and not self.ready_for_retry():
@@ -1033,6 +1114,7 @@ class TaskInstance(Base):
                 TI.dag_id == self.dag_id,
                 TI.task_id.in_(task.upstream_task_ids),
                 TI.execution_date == self.execution_date,
+                ~TI.expired,
                 TI.state.in_([
                     State.SUCCESS, State.FAILED,
                     State.UPSTREAM_FAILED, State.SKIPPED]),
@@ -1061,7 +1143,7 @@ class TaskInstance(Base):
         to be retried.
         """
         return self.state == State.UP_FOR_RETRY and \
-            self.end_date + self.task.retry_delay < datetime.now()
+            self.end_date + self.task.retry_delay < datetime.now(pytz.utc)
 
     @provide_session
     def pool_full(self, session):
@@ -1109,7 +1191,7 @@ class TaskInstance(Base):
         self.refresh_from_db()
         self.clear_xcom_data()
         self.job_id = job_id
-        iso = datetime.now().isoformat()
+        iso = datetime.now(pytz.utc).isoformat()
         self.hostname = socket.gethostname()
         self.operator = task.__class__.__name__
 
@@ -1144,7 +1226,7 @@ class TaskInstance(Base):
             msg = "Starting attempt {attempt} of {total}".format(
                 attempt=self.try_number % (task.retries + 1) + 1,
                 total=task.retries + 1)
-            self.start_date = datetime.now()
+            self.start_date = datetime.now(pytz.utc)
 
             if not mark_success and self.state != State.QUEUED and (
                     self.pool or self.task.dag.concurrency_reached):
@@ -1227,7 +1309,7 @@ class TaskInstance(Base):
                 raise
 
             # Recording SUCCESS
-            self.end_date = datetime.now()
+            self.end_date = datetime.now(pytz.utc)
             self.set_duration()
             if not test_mode:
                 session.add(Log(self.state, self))
@@ -1256,7 +1338,7 @@ class TaskInstance(Base):
         logging.exception(error)
         task = self.task
         session = settings.Session()
-        self.end_date = datetime.now()
+        self.end_date = datetime.now(pytz.utc)
         self.set_duration()
         if not test_mode:
             session.add(Log(State.FAILED, self))
@@ -1331,11 +1413,22 @@ class TaskInstance(Base):
                 .first()
             )
             run_id = dag_run.run_id if dag_run else None
+            #TODO  we could add adhoc configuration here!!!!
             session.expunge_all()
             session.commit()
 
         if task.params:
             params.update(task.params)
+
+        if dag_run and dag_run.conf:
+            params.update(dag_run.conf)
+            env = task.dag.default_args.get('env',None)
+            if env:
+                env.update(dag_run.conf)
+
+        workspace_folder = configuration.get('core','workspace_folder')
+
+        ws = '{}/{}/{}'.format(workspace_folder, self.dag_id, ts_nodash)
 
         return {
             'dag': task.dag,
@@ -1343,6 +1436,7 @@ class TaskInstance(Base):
             'ds_nodash': ds_nodash,
             'ts': ts,
             'ts_nodash': ts_nodash,
+            'ws': ws,
             'yesterday_ds': yesterday_ds,
             'yesterday_ds_nodash': yesterday_ds_nodash,
             'tomorrow_ds': tomorrow_ds,
@@ -1483,6 +1577,17 @@ class TaskInstance(Base):
         else:
             return pull_fn(task_id=task_ids)
 
+    def expire_older_versions(self, session):
+        TI = TaskInstance
+        if self.version > 0:
+            for r in session.query(TI).filter(
+                            TI.task_id == self.task_id,
+                            TI.dag_id == self.dag_id,
+                            TI.version < self.version):
+                r.expired = True
+                if not r.state:
+                    r.state = State.SKIPPED
+        # session.commit()
 
 class Log(Base):
     """
@@ -1492,16 +1597,16 @@ class Log(Base):
     __tablename__ = "log"
 
     id = Column(Integer, primary_key=True)
-    dttm = Column(DateTime)
+    dttm = Column(DateTime(timezone=True))
     dag_id = Column(String(ID_LEN))
     task_id = Column(String(ID_LEN))
     event = Column(String(30))
-    execution_date = Column(DateTime)
+    execution_date = Column(DateTime(timezone=True))
     owner = Column(String(500))
     extra = Column(Text)
 
     def __init__(self, event, task_instance, owner=None, extra=None, **kwargs):
-        self.dttm = datetime.now()
+        self.dttm = datetime.now(pytz.utc)
         self.event = event
         self.extra = extra
 
@@ -2070,7 +2175,7 @@ class BaseOperator(object):
         range.
         """
         TI = TaskInstance
-        end_date = end_date or datetime.now()
+        end_date = end_date or datetime.now(pytz.utc)
         return session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
@@ -2118,7 +2223,7 @@ class BaseOperator(object):
         Run a set of task instances for a date range.
         """
         start_date = start_date or self.start_date
-        end_date = end_date or self.end_date or datetime.now()
+        end_date = end_date or self.end_date or datetime.now(pytz.utc)
 
         for dt in self.dag.date_range(start_date, end_date=end_date):
             TaskInstance(self, dt).run(
@@ -2266,20 +2371,29 @@ class DagModel(Base):
     # Whether that DAG was seen on the last DagBag load
     is_active = Column(Boolean, default=False)
     # Last time the scheduler started
-    last_scheduler_run = Column(DateTime)
+    last_scheduler_run = Column(DateTime(timezone=True))
     # Last time this DAG was pickled
-    last_pickled = Column(DateTime)
+    last_pickled = Column(DateTime(timezone=True))
     # When the DAG received a refreshed signal last, used to know when
     # we need to force refresh
-    last_expired = Column(DateTime)
+    last_expired = Column(DateTime(timezone=True))
     # Whether (one  of) the scheduler is scheduling this DAG at the moment
     scheduler_lock = Column(Boolean)
     # Foreign key to the latest pickle_id
     pickle_id = Column(Integer)
+    # git source name
+    git_repo = Column(String(1000))
     # The location of the file containing the DAG object
     fileloc = Column(String(2000))
     # String representing the owners
     owners = Column(String(2000))
+
+    # yiqing : make webapp work without dag python objects.
+    params = Column(TEXT)  # json format
+    schedule = Column(String(1000))
+    health = Column(String(30))
+
+
 
     def __repr__(self):
         return "<DAG: {self.dag_id}>".format(self=self)
@@ -2387,6 +2501,7 @@ class DAG(LoggingMixin):
         self.dag_id = dag_id
         self.start_date = start_date
         self.end_date = end_date
+        self.schedule_interval_raw = schedule_interval
         self.schedule_interval = schedule_interval
         if schedule_interval in cron_presets:
             self._schedule_interval = cron_presets.get(schedule_interval)
@@ -2399,7 +2514,7 @@ class DAG(LoggingMixin):
             template_searchpath = [template_searchpath]
         self.template_searchpath = template_searchpath
         self.parent_dag = None  # Gets set when DAGs are loaded
-        self.last_loaded = datetime.now()
+        self.last_loaded = datetime.now(pytz.utc)
         self.safe_dag_id = dag_id.replace('.', '__dot__')
         self.concurrency = concurrency
         self.max_active_runs = max_active_runs
@@ -2457,7 +2572,7 @@ class DAG(LoggingMixin):
 
     # /Context Manager ----------------------------------------------
 
-    def date_range(self, start_date, num=None, end_date=datetime.now()):
+    def date_range(self, start_date, num=None, end_date=datetime.now(pytz.utc)):
         if num:
             end_date = None
         return utils_date_range(
@@ -2504,7 +2619,8 @@ class DAG(LoggingMixin):
         """
         File location of where the dag object is instantiated
         """
-        fn = self.full_filepath.replace(DAGS_FOLDER + '/', '')
+        fn = self.full_filepath.replace(DAGS_FOLDER + '/', 'DAGS_FOLDER/')
+        fn = fn.replace(GIT_REPO_FOLDER + '/', 'GIT_REPO_FOLDER/')
         fn = fn.replace(os.path.dirname(__file__) + '/', '')
         return fn
 
@@ -2602,7 +2718,9 @@ class DAG(LoggingMixin):
             .filter(
                 TI.dag_id == self.dag_id,
                 TI.task_id.in_(self.active_task_ids),
-                TI.execution_date.in_(r.execution_date for r in active_runs)
+                TI.execution_date.in_(r.execution_date for r in active_runs),
+                TI.state != State.PENDING,
+                ~TI.expired
             )
             .all())
 
@@ -2630,7 +2748,7 @@ class DAG(LoggingMixin):
                 if t.execution_date == run.execution_date
             ]
 
-            if len(tis) == len(self.active_tasks):
+            if len(tis) >= len(self.active_tasks):
 
                 # if any roots failed, the run failed
                 root_ids = [t.task_id for t in self.roots]
@@ -2720,7 +2838,7 @@ class DAG(LoggingMixin):
         if not start_date:
             start_date = (datetime.today()-timedelta(30)).date()
             start_date = datetime.combine(start_date, datetime.min.time())
-        end_date = end_date or datetime.now()
+        end_date = end_date or datetime.now(pytz.utc)
         tis = session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.execution_date >= start_date,
@@ -2868,10 +2986,10 @@ class DAG(LoggingMixin):
         d = {}
         d['is_picklable'] = True
         try:
-            dttm = datetime.now()
+            dttm = datetime.now(pytz.utc)
             pickled = pickle.dumps(self)
             d['pickle_len'] = len(pickled)
-            d['pickling_duration'] = "{}".format(datetime.now() - dttm)
+            d['pickling_duration'] = "{}".format(datetime.now(pytz.utc) - dttm)
         except Exception as e:
             logging.exception(e)
             d['is_picklable'] = False
@@ -2889,7 +3007,7 @@ class DAG(LoggingMixin):
         if not dp or dp.pickle != self:
             dp = DagPickle(dag=self)
             session.add(dp)
-            self.last_pickled = datetime.now()
+            self.last_pickled = datetime.now(pytz.utc)
             session.commit()
             self.pickle_id = dp.id
 
@@ -3013,7 +3131,7 @@ class Chart(Base):
         "User", cascade=False, cascade_backrefs=False, backref='charts')
     x_is_date = Column(Boolean, default=True)
     iteration_no = Column(Integer, default=0)
-    last_modified = Column(DateTime, default=func.now())
+    last_modified = Column(DateTime(timezone=True), default=func.now())
 
     def __repr__(self):
         return self.label
@@ -3034,8 +3152,8 @@ class KnownEvent(Base):
 
     id = Column(Integer, primary_key=True)
     label = Column(String(200))
-    start_date = Column(DateTime)
-    end_date = Column(DateTime)
+    start_date = Column(DateTime(timezone=True))
+    end_date = Column(DateTime(timezone=True))
     user_id = Column(Integer(), ForeignKey('users.id'),)
     known_event_type_id = Column(Integer(), ForeignKey('known_event_type.id'),)
     reported_by = relationship(
@@ -3124,8 +3242,8 @@ class XCom(Base):
     key = Column(String(512))
     value = Column(PickleType(pickler=dill))
     timestamp = Column(
-        DateTime, default=func.now(), nullable=False)
-    execution_date = Column(DateTime, nullable=False)
+        DateTime(timezone=True), default=func.now(), nullable=False)
+    execution_date = Column(DateTime(timezone=True), nullable=False)
 
     # source information
     task_id = Column(String(ID_LEN), nullable=False)
@@ -3263,13 +3381,16 @@ class DagRun(Base):
 
     id = Column(Integer, primary_key=True)
     dag_id = Column(String(ID_LEN))
-    execution_date = Column(DateTime, default=func.now())
-    start_date = Column(DateTime, default=func.now())
-    end_date = Column(DateTime)
+    execution_date = Column(DateTime(timezone=True), default=func.now())
+    start_date = Column(DateTime(timezone=True), default=func.now())
+    end_date = Column(DateTime(timezone=True))
     state = Column(String(50), default=State.RUNNING)
     run_id = Column(String(ID_LEN))
     external_trigger = Column(Boolean, default=True)
     conf = Column(PickleType)
+    # yiqing: new columns
+    version = Column(Integer, default=0)  # version of dag run, used for re-run
+    queue = Column(String(50)) # if specified, overwrites default in code.
 
     __table_args__ = (
         Index('dr_run_id', dag_id, run_id, unique=True),
@@ -3347,9 +3468,9 @@ class SlaMiss(Base):
 
     task_id = Column(String(ID_LEN), primary_key=True)
     dag_id = Column(String(ID_LEN), primary_key=True)
-    execution_date = Column(DateTime, primary_key=True)
+    execution_date = Column(DateTime(timezone=True), primary_key=True)
     email_sent = Column(Boolean, default=False)
-    timestamp = Column(DateTime)
+    timestamp = Column(DateTime(timezone=True))
     description = Column(Text)
     notification_sent = Column(Boolean, default=False)
 
@@ -3361,6 +3482,21 @@ class SlaMiss(Base):
 class ImportError(Base):
     __tablename__ = "import_error"
     id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime)
+    timestamp = Column(DateTime(timezone=True))
     filename = Column(String(1024))
     stacktrace = Column(Text)
+
+
+class DagBagModel(Base):
+    __tablename__ = 'dagbag'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    url = Column(String(1000), nullable=False)
+    branch = Column(String(1000), nullable=False)
+    folder = Column(String(1000), nullable=False)
+    disabled = Column(Boolean, default=False)
+    description = Column(TEXT, nullable=True)
+
+
+# do we need plugin auto updated? if so also need a plugin table here.

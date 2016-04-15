@@ -26,6 +26,11 @@ import logging
 import socket
 import subprocess
 from time import sleep
+import pytz
+from dateutil.tz import tzlocal
+
+from git import Remote, Repo, FetchInfo
+import os
 
 from sqlalchemy import Column, Integer, String, DateTime, func, Index, or_
 from sqlalchemy.orm.session import make_transient
@@ -58,9 +63,9 @@ class BaseJob(Base, LoggingMixin):
     dag_id = Column(String(ID_LEN),)
     state = Column(String(20))
     job_type = Column(String(30))
-    start_date = Column(DateTime())
-    end_date = Column(DateTime())
-    latest_heartbeat = Column(DateTime())
+    start_date = Column(DateTime(timezone=True))
+    end_date = Column(DateTime(timezone=True))
+    latest_heartbeat = Column(DateTime(timezone=True))
     executor_class = Column(String(500))
     hostname = Column(String(500))
     unixname = Column(String(1000))
@@ -82,22 +87,22 @@ class BaseJob(Base, LoggingMixin):
         self.hostname = socket.gethostname()
         self.executor = executor
         self.executor_class = executor.__class__.__name__
-        self.start_date = datetime.now()
-        self.latest_heartbeat = datetime.now()
+        self.start_date = datetime.now(pytz.utc)
+        self.latest_heartbeat = datetime.now(pytz.utc)
         self.heartrate = heartrate
         self.unixname = getpass.getuser()
         super(BaseJob, self).__init__(*args, **kwargs)
 
     def is_alive(self):
         return (
-            (datetime.now() - self.latest_heartbeat).seconds <
+            (datetime.now(pytz.utc) - self.latest_heartbeat).seconds <
             (conf.getint('scheduler', 'JOB_HEARTBEAT_SEC') * 2.1)
         )
 
     def kill(self):
         session = settings.Session()
         job = session.query(BaseJob).filter(BaseJob.id == self.id).first()
-        job.end_date = datetime.now()
+        job.end_date = datetime.now(pytz.utc)
         try:
             self.on_kill()
         except:
@@ -143,11 +148,11 @@ class BaseJob(Base, LoggingMixin):
 
         if job.latest_heartbeat:
             sleep_for = self.heartrate - (
-                datetime.now() - job.latest_heartbeat).total_seconds()
+                datetime.now(pytz.utc) - job.latest_heartbeat).total_seconds()
             if sleep_for > 0:
                 sleep(sleep_for)
 
-        job.latest_heartbeat = datetime.now()
+        job.latest_heartbeat = datetime.now(pytz.utc)
 
         session.merge(job)
         session.commit()
@@ -171,7 +176,7 @@ class BaseJob(Base, LoggingMixin):
         self._execute()
 
         # Marking the success in the DB
-        self.end_date = datetime.now()
+        self.end_date = datetime.now(pytz.utc)
         self.state = State.SUCCESS
         session.merge(self)
         session.commit()
@@ -262,16 +267,16 @@ class SchedulerJob(BaseJob):
             TI.execution_date == sq.c.max_ti,
         ).all()
 
-        ts = datetime.now()
+        ts = datetime.now(pytz.utc)
         SlaMiss = models.SlaMiss
         for ti in max_tis:
             task = dag.get_task(ti.task_id)
             dttm = ti.execution_date
             if task.sla:
                 dttm = dag.following_schedule(dttm)
-                while dttm < datetime.now():
+                while dttm < datetime.now(pytz.utc):
                     following_schedule = dag.following_schedule(dttm)
-                    if following_schedule + task.sla < datetime.now():
+                    if following_schedule + task.sla < datetime.now(pytz.utc):
                         session.merge(models.SlaMiss(
                             task_id=ti.task_id,
                             dag_id=ti.dag_id,
@@ -385,9 +390,9 @@ class SchedulerJob(BaseJob):
             for dr in active_runs:
                 if (
                         dr.start_date and dag.dagrun_timeout and
-                        dr.start_date < datetime.now() - dag.dagrun_timeout):
+                        dr.start_date < datetime.now(pytz.utc) - dag.dagrun_timeout):
                     dr.state = State.FAILED
-                    dr.end_date = datetime.now()
+                    dr.end_date = datetime.now(pytz.utc)
             session.commit()
 
             qry = session.query(func.max(DagRun.execution_date)).filter_by(
@@ -398,7 +403,7 @@ class SchedulerJob(BaseJob):
             last_scheduled_run = qry.scalar()
             next_run_date = None
             if dag.schedule_interval == '@once' and not last_scheduled_run:
-                next_run_date = datetime.now()
+                next_run_date = datetime.now(pytz.utc)
             elif not last_scheduled_run:
                 # First run
                 TI = models.TaskInstance
@@ -411,14 +416,17 @@ class SchedulerJob(BaseJob):
                     # Migrating from previous version
                     # make the past 5 runs active
                     next_run_date = dag.date_range(latest_run, -5)[0]
+                    next_run_date = next_run_date.replace(tzinfo=tzlocal())
                 else:
                     task_start_dates = [t.start_date for t in dag.tasks]
                     if task_start_dates:
                         next_run_date = min(task_start_dates)
+                        next_run_date = next_run_date.replace(tzinfo=tzlocal())
                     else:
                         next_run_date = None
             elif dag.schedule_interval != '@once':
                 next_run_date = dag.following_schedule(last_scheduled_run)
+                next_run_date = next_run_date.replace(tzinfo=tzlocal())
 
             # don't ever schedule prior to the dag's start_date
             if dag.start_date:
@@ -430,20 +438,28 @@ class SchedulerJob(BaseJob):
                 schedule_end = next_run_date
             elif next_run_date:
                 schedule_end = dag.following_schedule(next_run_date)
+                schedule_end = schedule_end.replace(tzinfo=tzlocal())
 
             if next_run_date and dag.end_date and next_run_date > dag.end_date:
                 return
 
-            if next_run_date and schedule_end and schedule_end <= datetime.now():
+            if next_run_date and schedule_end and schedule_end <= datetime.now(pytz.utc):
                 next_run = DagRun(
                     dag_id=dag.dag_id,
                     run_id='scheduled__' + next_run_date.isoformat(),
                     execution_date=next_run_date,
-                    start_date=datetime.now(),
+                    start_date=datetime.now(pytz.utc),
                     state=State.RUNNING,
                     external_trigger=False
                 )
                 session.add(next_run)
+                # yiqing: create all task instances when scheduling it to make web UI easier.
+                TI = models.TaskInstance
+                for task in dag.tasks:
+                    ti = TI(task, next_run_date)
+                    ti.upstreams = [t.task_id for t in task.upstream_list]
+                    ti.downstreams = [t.task_id for t in task.downstream_list]
+                    session.add(ti)
                 session.commit()
                 return next_run
 
@@ -467,9 +483,9 @@ class SchedulerJob(BaseJob):
             pickle_id = dag.pickle(session).id
 
         db_dag = session.query(DagModel).filter_by(dag_id=dag.dag_id).first()
-        last_scheduler_run = db_dag.last_scheduler_run or datetime(2000, 1, 1)
+        last_scheduler_run = db_dag.last_scheduler_run or datetime(2000, 1, 1, tzinfo=pytz.utc)
         secs_since_last = (
-            datetime.now() - last_scheduler_run).total_seconds()
+            datetime.now(pytz.utc) - last_scheduler_run).total_seconds()
         # if db_dag.scheduler_lock or
         if secs_since_last < self.heartrate:
             session.commit()
@@ -478,10 +494,10 @@ class SchedulerJob(BaseJob):
         else:
             # Taking a lock
             db_dag.scheduler_lock = True
-            db_dag.last_scheduler_run = datetime.now()
+            db_dag.last_scheduler_run = datetime.now(pytz.utc)
             session.commit()
 
-        active_runs = dag.get_active_runs()
+        active_runs = dag.get_active_runs()  # a list of execution dates, also update run state here
 
         self.logger.info('Getting list of tasks to skip for active runs.')
         skip_tis = set()
@@ -491,16 +507,19 @@ class SchedulerJob(BaseJob):
                 .filter(
                     TI.dag_id == dag.dag_id,
                     TI.execution_date.in_(active_runs),
+                    ~TI.expired,
                     TI.state.in_((State.RUNNING, State.SUCCESS, State.FAILED)),
                 )
             )
             skip_tis = {(ti[0], ti[1]) for ti in qry.all()}
 
+        # get data set of all task runs of active dag runs
         descartes = [obj for obj in product(dag.tasks, active_runs)]
         could_not_run = set()
         self.logger.info('Checking dependencies on {} tasks instances, minus {} '
                      'skippable ones'.format(len(descartes), len(skip_tis)))
         for task, dttm in descartes:
+            # skip others, only left queued and unscheduled tasks
             if task.adhoc or (task.task_id, dttm) in skip_tis:
                 continue
             ti = TI(task, dttm)
@@ -658,6 +677,10 @@ class SchedulerJob(BaseJob):
                 session.commit()
 
     def _execute(self):
+        """
+        the function that does the actual work of the job
+        :return:
+        """
         dag_id = self.dag_id
 
         pessimistic_connection_handling()
@@ -671,7 +694,7 @@ class SchedulerJob(BaseJob):
         i = 0
         while not self.num_runs or self.num_runs > i:
             try:
-                loop_start_dttm = datetime.now()
+                loop_start_dttm = datetime.now(pytz.utc)
                 try:
                     self.process_events(executor=executor, dagbag=dagbag)
                     self.prioritize_queued(executor=executor, dagbag=dagbag)
@@ -680,10 +703,10 @@ class SchedulerJob(BaseJob):
 
                 i += 1
                 try:
+                    dagbag.collect_remote_dags(only_if_updated=True)
                     if i % self.refresh_dags_every == 0:
-                        dagbag = models.DagBag(self.subdir, sync_to_db=True)
-                    else:
-                        dagbag.collect_dags(only_if_updated=True)
+                        dagbag.collect_dags()
+                        dagbag.deactivate_inactive_dags()
                 except:
                     self.logger.error("Failed at reloading the dagbag")
                     Stats.incr('dag_refresh_error', 1, 1)
@@ -709,7 +732,7 @@ class SchedulerJob(BaseJob):
                         self.logger.exception(e)
                 self.logger.info("Done queuing tasks, calling the executor's "
                               "heartbeat")
-                duration_sec = (datetime.now() - loop_start_dttm).total_seconds()
+                duration_sec = (datetime.now(pytz.utc) - loop_start_dttm).total_seconds()
                 self.logger.info("Loop took: {} seconds".format(duration_sec))
                 try:
                     self.import_errors(dagbag)
@@ -805,7 +828,7 @@ class BackfillJob(BaseJob):
                 continue
 
             start_date = start_date or task.start_date
-            end_date = end_date or task.end_date or datetime.now()
+            end_date = end_date or task.end_date or datetime.now(pytz.utc)
             for dttm in self.dag.date_range(start_date, end_date=end_date):
                 ti = models.TaskInstance(task, dttm)
                 tasks_to_run[ti.key] = ti
@@ -1031,6 +1054,7 @@ class LocalTaskJob(BaseJob):
             job_id=self.id,
             pool=self.pool,
         )
+        print('local job command : {}'.format(command))
         self.process = subprocess.Popen(['bash', '-c', command])
         return_code = None
         while return_code is None:
@@ -1042,7 +1066,7 @@ class LocalTaskJob(BaseJob):
 
     """
     def heartbeat_callback(self):
-        if datetime.now() - self.start_date < timedelta(seconds=300):
+        if datetime.now(pytz.utc) - self.start_date < timedelta(seconds=300):
             return
         # Suicide pill
         TI = models.TaskInstance
@@ -1060,3 +1084,63 @@ class LocalTaskJob(BaseJob):
                 "Taking the poison pill. So long.".format(**locals()))
             self.process.terminate()
     """
+
+
+class DagSyncJob(BaseJob):
+    """A DagSyncJob keeps local dag folder up to date if dag is managed by git.
+    """
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'DagSyncJob'
+    }
+
+    def __init__(self, num_runs=None, *args, **kwargs):
+        self.num_runs = num_runs
+
+        super(DagSyncJob, self).__init__(*args, **kwargs)
+        pass
+
+    def _execute(self):
+        session = settings.Session()
+        i = 0
+        while not self.num_runs or self.num_runs > i:
+            i += 1
+            self.logger.info('Sync remote dags')
+            self.update_repo(session)
+            try:
+                self.heartbeat()
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.error("DagSyncJob heartbeat failed!")
+        session.commit()
+        session.close()
+
+    def update_repo(self, session):
+
+        DagBagModel = models.DagBagModel
+        for bag in session.query(DagBagModel):
+            try:
+                path = os.path.join('/var/tmp/airflow/git', bag.name)
+                if not os.path.exists(path):
+                    self.logger.info('cloning repo from {}'.format(bag.url))
+                    repo = Repo.clone_from(bag.url, path)
+                else:
+                    repo = Repo(path)
+                self.logger.info('updating repo from {}'.format(bag.url))
+                remote = Remote(repo, 'origin')
+                infos = remote.pull()
+                for info in infos:
+                    if not info.name.split('/')[1] == bag.branch:
+                        continue
+                    if not (info.flags | FetchInfo.HEAD_UPTODATE):
+                        print('dag changed!')
+                    else:
+                        print('resting...')
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.error('DagSyncJob failed!')
+
+
+if __name__ == '__main__':
+    job = DagSyncJob()
+    job.run()

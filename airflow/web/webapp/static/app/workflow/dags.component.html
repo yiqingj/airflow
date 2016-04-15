@@ -1,0 +1,36 @@
+<form class="form-inline pull-left">
+    <div class="form-group">
+        <input type="text" class="form-control" id="query"
+               placeholder="search...">
+    </div>
+    <button type="submit" class="btn btn-default">search</button>
+</form>
+<table class="table">
+    <thead>
+    <tr>
+        <th>name</th>
+        <th>schedule</th>
+        <th>owner</th>
+        <!--<th>action</th>-->
+    </tr>
+    </thead>
+    <tbody>
+    <tr *ngFor="#dag of dags" [ngClass]="{'success': dag.health=='good',
+        'warning': dag.health=='bad'}">
+        <td><a (click)="gotoDetail(dag)"><span class="h5">{{dag.dagId}} </span> </a>
+        </td>
+        <td><span class="label label-info"
+        [ngClass]="{'label-info':dag.schedule.startsWith('@'),
+        'label-default': dag.schedule=='None'}">{{dag.schedule}}</span></td>
+        <td>{{dag.owners}}</td>
+    </tr>
+    </tbody>
+
+</table>
+
+<pagination [totalItems]="totalItems" [(ngModel)]="currentPage" [maxSize]="maxSize"
+            class="pagination-sm" (pageChanged)="onPageChanged($event)"
+            [boundaryLinks]="true" [rotate]="false" (numPages)="numPages = $event"
+            [itemsPerPage]="itemsPerPage"
+            previousText="&lsaquo;" nextText="&rsaquo;" firstText="&laquo;"
+            lastText="&raquo;" class="pull-right"></pagination>

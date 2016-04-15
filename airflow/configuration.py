@@ -167,6 +167,13 @@ encrypt_s3_logs = False
 # deprecated option for remote log storage, use remote_base_log_folder instead!
 # s3_log_folder =
 
+# The folder where airflow should store remote dag git repo
+git_repo_folder = ~/.airflow/repo
+
+# The folder for work directory, for each dag there should be a subdirectory and local files could be saved there
+# this is useful for pipelines with dedicated queue setting to share local files without central storage solution.
+workspace_folder = ~/.airflow/workspace
+
 # The executor class that airflow should use. Choices include
 # SequentialExecutor, LocalExecutor, CeleryExecutor
 executor = SequentialExecutor
@@ -441,6 +448,21 @@ class ConfigParserWithDefaults(ConfigParser):
             raise AirflowConfigException("error: cannot use sqlite with the {}".
                 format(self.get('core', 'executor')))
 
+        git_folder = self.get('core','git_repo_folder')
+        workspace_folder = self.get('core','workspace_folder')
+        git_folder = expand_env_var(git_folder)
+        workspace_folder = expand_env_var(workspace_folder)
+        if not os.path.exists(git_folder):
+            try:
+                os.makedirs(git_folder)
+            except:
+                raise AirflowConfigException('Can\'t create git_repo_folder at {}'.format(git_folder))
+        if not os.path.exists(workspace_folder):
+            try:
+                os.makedirs(workspace_folder)
+            except:
+                raise AirflowConfigException('Can\'t create workspace_folder at {}'.format(workspace_folder))
+
         self.is_validated = True
 
     def _get_env_var_option(self, section, key):
@@ -689,3 +711,4 @@ def set(section, option, value):  # noqa
 
 def get_dags_folder():
     return os.path.expanduser(get('core', 'DAGS_FOLDER'))
+

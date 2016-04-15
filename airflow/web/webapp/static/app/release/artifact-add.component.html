@@ -1,0 +1,58 @@
+<div class="container-fluid">
+    <div class="row">
+        <ol class="breadcrumb navbar-breadcrumb">
+            <li>Release</li>
+            <li>Artifacts</li>
+            <li class="active">Add</li>
+        </ol>
+    </div>
+    <div class="row">
+        <div>
+            <button type="button" class="btn btn-default" (click)="goBack()">Back</button>
+        </div>
+    </div>
+    <div class="row" *ngIf="artifacts">
+        <div class="col-md-8 col-sm-12">
+            <form class="form-inline pull-left">
+                <div class="form-group">
+                    <input type="text" class="form-control" id="query" [(ngModel)]="query.text"
+                           placeholder="search...">
+                </div>
+                <div class="form-group">
+                    <select class="form-control" id="category"
+                            [(ngModel)]="query.category">
+                        <option value="atlas">atlas</option>
+                        <option value="pbf">pbf</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-default">search</button>
+            </form>
+            <table class="table table-striped">
+                <thead>
+                <tr>
+                    <th>name</th>
+                    <th>type</th>
+                    <th>release</th>
+                    <th>url</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr *ngFor="#artifact of artifacts" (click)="onRowSelected(artifact)">
+                    <td>{{ artifact.name}}</td>
+                    <td>{{ artifact.type}}</td>
+                    <td>{{ artifact.release}}</td>
+                    <td>{{ artifact.url}}</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+    <div class="row" *ngIf="selected">
+        <h4>Selected:</h4>
+        <ul>
+            <li *ngFor="#s of selected">{{ s.name }}</li>
+        </ul>
+        <button type="button" class="btn btn-default" (click)="onConfirm()">OK</button>
+    </div>
+</div>

@@ -1,0 +1,148 @@
+<ol class="breadcrumb navbar-breadcrumb">
+    <li [routerLink]="['DagList']" style="cursor: pointer;">Workflow</li>
+    <li class="active">{{dagId}}</li>
+</ol>
+<div>
+    <button type="button" (click)="goBack()">Back</button>
+</div>
+<div *ngIf="dag" class="container-fluid">
+    <div class="row">
+        <div class="col-md-12 col-sm-12">
+            <h3>{{dag.dagId}}
+                <button type="button" class="btn btn-default btn-xs"
+                        (click)="createDagRun()" title="start a new pipeline run"><i
+                        class="fa fa-plus"></i>
+                </button>
+            </h3>
+        </div>
+
+    </div>
+    <div class="row">
+        <div class="col-md-1 col-sm-2 text-right">
+            <strong>health: </strong>
+        </div>
+        <div class="col-md-1 col-sm-2">
+            <span class="label"
+                  [ngClass]="{'label-success': dag.health=='good',
+                  'label-warning': dag.health=='bad'}">{{dag.health}}</span>
+        </div>
+
+        <div class="col-md-1 col-sm-2 text-right">
+            <strong>schedule: </strong>
+        </div>
+        <div class="col-md-1 col-sm-2">
+            <span class="label label-info">{{dag.schedule}}</span>
+        </div>
+        <div class="col-md-1 col-sm-2 text-right">
+            <strong>owners: </strong>
+        </div>
+        <div class="col-md-2 col-sm-2">
+            {{dag.owners}}
+        </div>
+    </div>
+    <div class="row" *ngIf="dagRunSelected">
+        <myDagRe [dagRun]="dagRunSelected" (onNodeClick)="onTaskClick($event)"></myDagRe>
+    </div>
+    <div class="row">
+        <tabset>
+            <tab heading="History">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>run_id</th>
+                        <th>execution time</th>
+                        <th>state</th>
+                        <th>action</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr *ngFor="#dagRun of dagRuns; #idx=index" (click)="onHistoryClick(idx)"
+                        [class.active]="idx==dagRunSelectionIdx">
+                        <td><a (click)="gotoRunDetail(dagRun)">{{dagRun.runId}}</a></td>
+                        <td>{{dagRun.executionDate}}</td>
+                        <td>
+                        <span class="label"
+                              [ngClass]="{
+                                'label-success': dagRun.state=='success',
+                                'label-danger': dagRun.state=='failed',
+                                'label-default': dagRun.state == 'pending',
+                                'label-info': dagRun.state == 'running'}">
+                            {{dagRun.state}}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-xs" style="margin-top: 0px; margin-bottom: 0px"
+                                    (click)="gotoRunDetail(dagRun)">
+                                view
+                            </button>
+
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+                <pagination [totalItems]="totalItems" [(ngModel)]="currentPage" [maxSize]="maxSize"
+                            class="pagination-sm" (pageChanged)="onPageChanged($event)"
+                            [boundaryLinks]="true" [rotate]="false" (numPages)="numPages = $event"
+                            [itemsPerPage]="itemsPerPage"
+                            previousText="&lsaquo;" nextText="&rsaquo;" firstText="&laquo;"
+                            lastText="&raquo;" class="pull-right"></pagination>
+            </tab>
+            <tab heading="Tasks">
+                <table class="table table-striped">
+                    <thead>
+                    <tr>
+                        <th>name</th>
+                        <th>upstreams</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr *ngFor="#task of dag.tasks">
+                        <td>{{ task.taskId }}</td>
+                        <td>{{ task.upstreams}}</td>
+                        <td>
+                        <td>
+                    </tr>
+                    </tbody>
+                </table>
+            </tab>
+            <tab heading="Parameters">
+                <table class="table table-striped">
+                    <thead>
+                    <tr>
+                        <th>name</th>
+                        <th>default value</th>
+                        <th>type</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr *ngFor="#param of dag.params">
+                        <td>{{ param.key }}</td>
+                        <td>{{ param.value}}</td>
+                        <td></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </tab>
+            <tab heading="Artifacts">
+                <table class="table table-striped">
+                    <thead>
+                    <tr>
+                        <th>name</th>
+                        <th>type</th>
+                        <th>release</th>
+                        <th>url</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr *ngFor="#artifact of artifacts">
+                        <td>{{ artifact.name }}</td>
+                        <td>{{ artifact.type}}</td>
+                        <td>{{ artifact.release}}</td>
+                        <td>{{ artifact.url}}</td>
+                        <td></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </tab>
+        </tabset>
+    </div>
+</div>

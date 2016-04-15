@@ -29,6 +29,7 @@ from airflow.models import State as ST
 from airflow.models import DagModel
 from airflow.operators import DummyOperator, BashOperator, PythonOperator
 from airflow.utils.state import State
+import pytz
 from mock import patch
 from nose_parameterized import parameterized
 

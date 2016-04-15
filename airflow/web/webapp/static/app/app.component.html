@@ -1,0 +1,159 @@
+<toaster-container></toaster-container>
+<div class="app-container" [ngClass]="{expanded: isSideExpanded}">
+    <div class="row content-container">
+        <nav class="navbar navbar-default navbar-fixed-top navbar-top">
+            <div class="container-fluid">
+                <div class="navbar-header">
+                    <!--  -->
+                    <button type="button" class="navbar-expand-toggle"
+                            (click)="toggleSideBar(!isSideExpanded)">
+                        <i class="fa fa-bars icon"></i>
+                    </button>
+                    <ol class="breadcrumb navbar-breadcrumb">
+                        <li class="active">OSM Pipeline Manager</li>
+                    </ol>
+                    <button type="button" class="navbar-right-expand-toggle pull-right visible-xs"
+                            (click)="toggleRight(!isRightExpanded)">
+                        <i class="fa fa-th icon"></i>
+                    </button>
+                </div>
+                <ul class="nav navbar-nav navbar-right" [ngClass]="{expanded: isRightExpanded}">
+                    <button type="button" class="navbar-right-expand-toggle pull-right visible-xs"
+                            (click)="toggleRight(!isRightExpanded)">
+                        <i class="fa fa-times icon"></i>
+                    </button>
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button"
+                           aria-expanded="false"><i class="fa fa-envelope-o"></i></a>
+                        <ul class="dropdown-menu animated fadeInDown">
+                            <li class="title">
+                                Notification <span class="badge pull-right">0</span>
+                            </li>
+                            <li class="message">
+                                No new notification
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button"
+                           aria-expanded="false"><i class="fa fa-bell-o"></i> 1</a>
+                        <ul class="dropdown-menu danger  animated fadeInDown">
+                            <li class="title">
+                                Notification <span class="badge pull-right">1</span>
+                            </li>
+                            <li>
+                                <ul class="list-group notifications">
+                                    <a [routerLink]="['Dashboard']">
+                                        <li class="list-group-item">
+                                            <span class="badge">1</span> <i
+                                                class="fa fa-exclamation-circle icon"></i> new
+                                            run
+                                        </li>
+                                    </a>
+                                    <a href="#">
+                                        <li class="list-group-item">
+                                            <span class="badge success">1</span> <i
+                                                class="fa fa-check icon"></i> new data
+                                        </li>
+                                    </a>
+                                    <a href="#">
+                                        <li class="list-group-item message">
+                                            view all
+                                        </li>
+                                    </a>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="dropdown profile">
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button"
+                           aria-expanded="false">Yiqing Jin<span class="caret"></span></a>
+                        <ul class="dropdown-menu animated fadeInDown">
+                            <li class="profile-img">
+                                <img src="../assets/img/profile/apple-logo.png"
+                                     class="profile-img">
+                            </li>
+                            <li>
+                                <div class="profile-info">
+                                    <h4 class="username">Yiqing Jin</h4>
+                                    <p>yiqing_jin@apple.com</p>
+                                    <div class="btn-group margin-bottom-2x" role="group">
+                                        <button type="button" class="btn btn-default"><i
+                                                class="fa fa-user"></i> Profile
+                                        </button>
+                                        <button type="button" class="btn btn-default"><i
+                                                class="fa fa-sign-out"></i> Logout
+                                        </button>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        <div class="side-menu sidebar-inverse">
+            <nav class="navbar navbar-default" role="navigation">
+                <div class="side-menu-container">
+                    <div class="navbar-header">
+                        <a class="navbar-brand" [routerLink]="['Dashboard']">
+                            <div class="icon fa fa-apple"></div>
+                            <div class="title">OpenFlow</div>
+                        </a>
+                        <button type="button" class="navbar-expand-toggle pull-right visible-xs"
+                                (click)="toggleSideBar(!isSideExpanded)">
+                            <i class="fa fa-times icon"></i>
+                        </button>
+                    </div>
+                    <ul class="nav navbar-nav">
+                        <li [class.active]="_router.isRouteActive(_router.generate(['/Dashboard']))">
+                            <a [routerLink]="['Dashboard']">
+                                <span class="icon fa fa-tachometer"></span><span
+                                    class="title">Dashboard</span>
+                            </a>
+                        </li>
+                        <li [class.active]="_router.isRouteActive(_router.generate(['/Workflow']))">
+                            <a [routerLink]="['Workflow']">
+                                <span class="icon fa fa-tasks"></span><span
+                                    class="title">Workflow</span>
+                            </a>
+                        </li>
+                        <li [class.active]="_router.isRouteActive(_router.generate(['/Repository']))">
+                            <a [routerLink]="['Repository']">
+                                <span class="icon fa fa-database"></span><span
+                                    class="title">Repository</span>
+                            </a>
+                        </li>
+                        <li [class.active]="_router.isRouteActive(_router.generate(['/Release']))">
+                            <a [routerLink]="['Release']">
+                                <span class="icon fa fa-calendar"></span><span
+                                    class="title">Release</span>
+                            </a>
+                        </li>
+                        <li [class.active]="_router.isRouteActive(_router.generate(['/Setting']))">
+                            <a [routerLink]="['Setting']">
+                                <span class="icon fa fa-cog"></span><span
+                                    class="title">Setting</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <!-- /.navbar-collapse -->
+            </nav>
+        </div>
+        <div class="container-fluid">
+            <div class="side-body padding-top">
+                <router-outlet></router-outlet>
+            </div>
+        </div>
+    </div>
+
+    <footer class="app-footer">
+        <div class="wrapper">
+            <!--<span class="pull-right"> <a href="#"><i class="fa fa-long-arrow-up"></i></a></span>-->
+            © 2016
+        </div>
+    </footer>
+</div>
+

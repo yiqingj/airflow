@@ -135,7 +135,9 @@ setup(
         'setproctitle>=1.1.8, <2',
         'sqlalchemy>=0.9.8',
         'thrift>=0.9.2, <0.10',
-        'Flask-WTF==0.12'
+        'Flask-WTF==0.12',
+        'iso8601==0.1.11',
+        ''
     ],
     extras_require={
         'all': devel_all,

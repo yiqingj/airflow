@@ -62,15 +62,21 @@ def setup_locations(process, pid=None, stdout=None, stderr=None, log=None):
 def process_subdir(subdir):
     dags_folder = conf.get("core", "DAGS_FOLDER")
     dags_folder = os.path.expanduser(dags_folder)
+    git_folder = conf.get("core", "GIT_REPO_FOLDER")
+    git_folder = os.path.expanduser(git_folder)
     if subdir:
         if "DAGS_FOLDER" in subdir:
             subdir = subdir.replace("DAGS_FOLDER", dags_folder)
+        if "GIT_REPO_FOLDER" in subdir:
+            subdir = subdir.replace("GIT_REPO_FOLDER", git_folder)
         subdir = os.path.abspath(os.path.expanduser(subdir))
         return subdir
 
 
-def get_dag(args):
+def get_dag(args, include_remote=False):
     dagbag = DagBag(process_subdir(args.subdir))
+    if include_remote:
+        dagbag.collect_remote_dags(only_if_updated=False)
     if args.dag_id not in dagbag.dags:
         raise AirflowException(
             'dag_id could not be found: {}'.format(args.dag_id))
@@ -120,7 +126,7 @@ def backfill(args, dag=None):
 def trigger_dag(args):
     session = settings.Session()
     # TODO: verify dag_id
-    execution_date = datetime.now()
+    execution_date = datetime.now(pytz.utc)
     run_id = args.run_id or "manual__{0}".format(execution_date.isoformat())
     dr = session.query(DagRun).filter(
         DagRun.dag_id == args.dag_id, DagRun.run_id == run_id).first()
@@ -171,11 +177,11 @@ def run(args, dag=None):
 
     # Setting up logging
     log_base = os.path.expanduser(conf.get('core', 'BASE_LOG_FOLDER'))
-    directory = log_base + "/{args.dag_id}/{args.task_id}".format(args=args)
+    iso = args.execution_date.isoformat()
+    directory = log_base + "/{args.dag_id}/{args.task_id}/{iso}".format(args=args, iso=iso)
     if not os.path.exists(directory):
         os.makedirs(directory)
-    iso = args.execution_date.isoformat()
-    filename = "{directory}/{iso}".format(**locals())
+    filename = "{directory}/{version}".format(version=args.version, directory=directory)
 
     logging.root.handlers = []
     logging.basicConfig(
@@ -184,7 +190,7 @@ def run(args, dag=None):
         format=settings.LOG_FORMAT)
 
     if not args.pickle and not dag:
-        dag = get_dag(args)
+        dag = get_dag(args, include_remote=True)
     elif not dag:
         session = settings.Session()
         logging.info('Loading pickle id {args.pickle}'.format(**locals()))
@@ -195,10 +201,9 @@ def run(args, dag=None):
         dag = dag_pickle.pickle
     task = dag.get_task(task_id=args.task_id)
 
-    ti = TaskInstance(task, args.execution_date)
+    ti = TaskInstance(task, args.execution_date, version=args.version)
 
     if args.local:
-        print("Logging into: " + filename)
         run_job = jobs.LocalTaskJob(
             task_instance=ti,
             mark_success=args.mark_success,
@@ -396,7 +401,37 @@ def webserver(args):
             sp.wait()
 
 
+def web(args):
+    print(settings.HEADER)
+
+    from airflow.web.webapp import create_app
+    app = create_app(conf)
+    workers = args.workers or conf.get('webserver', 'workers')
+    if args.debug:
+        print(
+            "Starting the web server on port {0} and host {1}.".format(
+                args.port, args.hostname))
+        app.run(debug=True, port=args.port, host=args.hostname)
+    else:
+        print(
+            'Running the Gunicorn server with {workers} {args.workerclass}'
+            'workers on host {args.hostname} and port '
+            '{args.port}...'.format(**locals()))
+        sp = subprocess.Popen([
+            'gunicorn', '-w', str(args.workers), '-k', str(args.workerclass),
+            '-t', '120', '-b', args.hostname + ':' + str(args.port),
+            'airflow.web.webapp:create_app(\'airflow.web.webapp.config.ProdConfig\')'])
+        sp.wait()
+
 def scheduler(args):
+    db_utils.upgradedb()
+    # reset after db upgrade, alembic will mess up the log
+    import sys
+    logging.root.handlers = []
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=settings.LOGGING_LEVEL,
+        format=settings.LOG_FORMAT)
     print(settings.HEADER)
     job = jobs.SchedulerJob(
         dag_id=args.dag_id,
@@ -489,7 +524,7 @@ def worker(args):
 
         worker.run(**options)
         sp.kill()
-        
+
 
 def initdb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
@@ -693,6 +728,7 @@ class CLIFactory(object):
             ("-p", "--pickle"),
             "Serialized pickle object of the entire dag (used internally)"),
         'job_id': Arg(("-j", "--job_id"), argparse.SUPPRESS),
+        'version': Arg(("-v", "--version"), default=0, type=int, help="task version"),
         # webserver
         'port': Arg(
             ("-p", "--port"),
@@ -810,7 +846,7 @@ class CLIFactory(object):
                 'dag_id', 'task_id', 'execution_date', 'subdir',
                 'mark_success', 'force', 'pool',
                 'local', 'raw', 'ignore_dependencies',
-                'ignore_depends_on_past', 'ship_dag', 'pickle', 'job_id'),
+                'ignore_depends_on_past', 'ship_dag', 'pickle', 'job_id', 'version'),
         }, {
             'func': initdb,
             'help': "Initialize the metadata database",
@@ -841,6 +877,10 @@ class CLIFactory(object):
             'args': ('port', 'workers', 'workerclass', 'worker_timeout', 'hostname',
                      'pid', 'foreground', 'stdout', 'stderr', 'log_file',
                      'debug'),
+        }, {
+            'func': web,
+            'help': "Start a Airflow webserver instance",
+            'args': ('port', 'workers', 'workerclass', 'hostname', 'debug'),
         }, {
             'func': resetdb,
             'help': "Burn down and rebuild the metadata database",

@@ -1,0 +1,469 @@
+# Example YAML to get you started quickly.
+# Be aware that YAML has indentation based scoping.
+# Code completion support is available so start typing for available options.
+swagger: '2.0'
+
+# This is your document metadata
+info:
+  description: |
+    This is the server that manages OSM data processing pipeline.
+
+    [OSM project HomePage](https://iswiki.apple.com/confluence/display/OSM/OSM+Home)
+  version: "0.1.0"
+  title: Openflow API
+  contact:
+    name: yiqing_jin@apple.com
+host: localhost
+basePath: /api/v1
+schemes:
+  - http
+  - https
+
+# Describe your paths here
+paths:
+  # This is a path endpoint. Change it.
+  /dags:
+    # This is a HTTP operation
+    get:
+      tags:
+        - dag
+      # Describe this verb here. Note: you can use markdown
+      description: |
+        Gets `Dag` objects.
+      # This is array of GET operation parameters:
+      parameters:
+        # An example parameter that is in query and is required
+        -
+          name: size
+          in: query
+          description: item per page
+          required: true
+          type: number
+          format: integer
+        -
+          name: page
+          in: query
+          description: page number
+          required: true
+          type: number
+          format: integer
+      # Expected responses for this operation:
+      responses:
+        # Response code
+        200:
+          description: Successful response
+          # A schema describing your response object.
+          # Use JSON Schema format
+          schema:
+            title: dagList
+            type: array
+            items:
+              $ref: '#/definitions/Dag'
+  /tasks:
+    get:
+      tags:
+        - task
+      description: |
+        Get `Task` list information
+      parameters:
+        -
+          name: dagName
+          in: query
+          required: true
+          type: string
+        -
+          name: size
+          in: query
+          description: item per page
+          required: true
+          type: number
+          format: integer
+        -
+          name: page
+          in: query
+          description: page number
+          required: true
+          type: number
+          format: integer
+      responses:
+        200:
+          description: Successful response
+          schema:
+            title: taskList
+            type: array
+            items:
+              $ref: '#/definitions/Task'
+
+  /dagRuns:
+    get:
+      tags:
+        - dagRun
+      description: |
+        Get `DagRun` list information
+      parameters:
+        -
+          name: size
+          in: query
+          description: item per page
+          required: false
+          type: number
+          format: integer
+        -
+          name: page
+          in: query
+          description: page number
+          required: false
+          type: number
+          format: integer
+        -
+          name: state
+          in: query
+          description: state filter
+          required: true
+          type: string
+        -
+          name: dagId
+          in: query
+          description: dag id filter
+          required: false
+          type: string
+
+      responses:
+        200:
+          description: Successful response
+          schema:
+            title: taskList
+            type: array
+            items:
+              $ref: '#/definitions/DagRun'
+
+  /taskRuns/{dagRun}:
+    get:
+      tags:
+        - taskRun
+      description: |
+        Get `TaskRun` list information
+      parameters:
+        -
+          name: dagRun
+          in: path
+          required: true
+          type: string
+        -
+          name: size
+          in: query
+          description: item per page
+          required: true
+          type: number
+          format: integer
+        -
+          name: page
+          in: query
+          description: page number
+          required: true
+          type: number
+          format: integer
+      responses:
+        200:
+          description: Successful response
+          schema:
+            title: taskList
+            type: array
+            items:
+              $ref: '#/definitions/TaskRun'
+
+  /artifacts:
+    get:
+      tags:
+        - artifact
+      description: |
+        Get `Artifact` list information
+      parameters:
+        -
+          name: size
+          in: query
+          description: item per page
+          required: true
+          type: number
+          format: integer
+        -
+          name: page
+          in: query
+          description: page number
+          required: true
+          type: number
+          format: integer
+      responses:
+        200:
+          description: Successful response
+          schema:
+            title: taskList
+            type: array
+            items:
+              $ref: '#/definitions/Artifact'
+
+  /trains:
+    get:
+      tags:
+        - train
+      description: |
+        Get `Train` list information
+      parameters:
+        -
+          name: size
+          in: query
+          description: item per page
+          required: true
+          type: number
+          format: integer
+        -
+          name: page
+          in: query
+          description: page number
+          required: true
+          type: number
+          format: integer
+      responses:
+        200:
+          description: Successful response
+          schema:
+            title: taskList
+            type: array
+            items:
+              $ref: '#/definitions/Train'
+
+  /dagRun/{runId}:
+    get:
+      tags:
+        - dagRun
+      description: |
+        Get `DagRun`  information
+      parameters:
+        -
+          name: runId
+          in: path
+          required: true
+          type: string
+          description: the runId as the key to dagRun
+      responses:
+        200:
+          description: successful response
+          schema:
+            $ref: '#/definitions/DagRun'
+    post:
+      tags:
+        - dagRun
+      description: |
+        create a new DagRun, this means scheduler schedule a new job for a dag.
+      parameters:
+        -
+          name: runId
+          in: path
+          required: true
+          type: string
+          description: the key of new DagRun
+        -
+          name: dagRun
+          in: body
+          required: true
+          description: new dag run
+          schema:
+            $ref: '#/definitions/DagRun'
+      responses:
+        200:
+          description: Successful response
+        405:
+          description: invalid input
+    put:
+      tags:
+        - dagRun
+      description: |
+        update a dagRun, this is used for triggering a re-run of existing dag run
+      parameters:
+        -
+          name: runId
+          in: path
+          required: true
+          type: string
+          description: the key of dag run
+      responses:
+        200:
+          description: dag run updated successfully. a re-run will be scheduled soon
+        404:
+          description: dag run not found
+        405:
+          description: invalid input
+
+  /event:
+    post:
+      tags:
+        - Event
+      description: |
+        push events to be used for metrics analysis and statistics report
+      parameters:
+        -
+          name: events
+          in: body
+          required: true
+          description: events
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Event'
+      responses:
+        200:
+          description: Successful response
+        405:
+          description: invalid input
+
+
+definitions:
+  Dag:
+    type: object
+    properties:
+      name:
+        type: string
+        description: the name of dag
+      schedule:
+        type: string
+      owner:
+        type: string
+      health:
+        type: string
+      params:
+        type: array
+        items:
+          type: string
+      version:
+        type: string
+      tasks:
+        type: array
+        items:
+          $ref: '#/definitions/Task'
+  Task:
+    type: object
+    properties:
+      name:
+        type: string
+      maxRetry:
+        type: string
+      dagName:
+        type: string
+      upstreams:
+        type: array
+        items:
+          type: string
+  TaskRun:
+    type: object
+    properties:
+      name:
+        type: string
+      dagName:
+        type: string
+      version:
+        type: string
+      status:
+        type: string
+      runId:
+        type: string
+      startTime:
+        type: string
+      endTime:
+        type: string
+      skipped:
+        type: boolean
+      upstreams:
+        type: array
+        items:
+          type: string
+      downstreams:
+        type: array
+        items:
+          type: string
+  DagRun:
+    type: object
+    properties:
+      dagName:
+        type: string
+      runId:
+        type: string
+      runAfter:
+        type: string
+      status:
+        type: string
+      params:
+        type: array
+        items:
+          type: string
+      taskRuns:
+        type: array
+        items:
+          $ref: '#/definitions/TaskRun'
+  Artifact:
+    type: object
+    properties:
+      name:
+        type: string
+      type:
+        type: string
+      release:
+        type: string
+      url:
+        type: string
+      runId:
+        type: string
+      tags:
+        type: array
+        items:
+          type: string
+  Train:
+    type: object
+    properties:
+      name:
+        type: string
+      targetDate:
+        type: string
+      status:
+        type: string
+      countryList:
+        type: array
+        items:
+          type: string
+      description:
+        type: string
+
+  Event:
+    type: object
+    properties:
+      name:
+        type: string
+      dimensions:
+        type: array
+        items:
+          $ref: '#/definitions/Dimension'
+      metrics:
+        type: array
+        items:
+          $ref: '#/definitions/Metric'
+
+  Metric:
+    type: object
+    properties:
+      name:
+        type: string
+        description: name of this metric
+      value:
+        type: number
+        format: double
+        description: numeric value of the metric
+
+  Dimension:
+    type: object
+    properties:
+      name:
+        type: string
+        description: Represents the name of the dimension
+      value:
+        type: string
+        description: Represents the value of the dimension
+
