@@ -536,7 +536,7 @@ class SchedulerJob(BaseJob):
 
         # this type of deadlock happens when dagruns can't even start and so
         # the TI's haven't been persisted to the database.
-        if len(could_not_run) == len(descartes):
+        if descartes and len(could_not_run) == len(descartes):
             self.logger.error(
                 'Dag runs are deadlocked for DAG: {}'.format(dag.dag_id))
             (session

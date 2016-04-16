@@ -777,7 +777,7 @@ class TaskInstance(Base):
         cmd += "--version {self.version} "
         if not pickle_id and dag:
             if dag.full_filepath != dag.filepath:
-                cmd += "-sd DAGS_FOLDER/{dag.filepath} "
+                cmd += "-sd {dag.filepath} "
             elif dag.full_filepath:
                 cmd += "-sd {dag.full_filepath}"
         return cmd.format(**locals())
@@ -2490,6 +2490,21 @@ class DAG(LoggingMixin):
         self.user_defined_macros = user_defined_macros
         self.default_args = default_args or {}
         self.params = params or {}
+
+        # set environment variables
+        # update local variables with os environment variables if exists
+        if not self.default_args.has_key('env'):
+            self.default_args['env'] = {}
+        env = self.default_args['env']
+        env.update(self.params)
+        # we are not including all values from os.environ because sometimes it has values
+        # that could cause encoding exception.
+        os_env = {k: v for k, v in os.environ.items() if
+                  k in env.viewkeys() & os.environ.keys()}
+        env.update(os_env)
+        env.update({
+            'PATH': os.environ['PATH']
+        })
 
         # merging potentially conflicting default_args['params'] into params
         if 'params' in self.default_args:

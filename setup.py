@@ -5,7 +5,7 @@ import os
 import sys
 
 # Kept manually in sync with airflow.__version__
-version = '1.7.0'
+version = '2.0.0'
 
 
 class Tox(TestCommand):
@@ -103,7 +103,7 @@ devel_all = devel + all_dbs + doc + samba + s3 + slack + crypto + oracle + docke
 
 
 setup(
-    name='airflow',
+    name='airflow2',
     description='Programmatically author, schedule and monitor data pipelines',
     license='Apache License 2.0',
     version=version,
@@ -136,8 +136,12 @@ setup(
         'sqlalchemy>=0.9.8',
         'thrift>=0.9.2, <0.10',
         'Flask-WTF==0.12',
+        'Flask-SQLAlchemy',
         'iso8601==0.1.11',
-        ''
+        'GitPython==1.0.2',
+        'Flask-RESTful==0.3.5',
+        'pytz==2015.7',
+
     ],
     extras_require={
         'all': devel_all,
@@ -172,7 +176,7 @@ setup(
         'github_enterprise': github_enterprise,
         'qds': qds
     },
-    classifiers={
+    classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
         'Environment :: Web Environment',
@@ -182,7 +186,7 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3.4',
         'Topic :: System :: Monitoring',
-    },
+    ],
     author='Maxime Beauchemin',
     author_email='maximebeauchemin@gmail.com',
     url='https://github.com/airbnb/airflow',
