@@ -51,6 +51,7 @@
                     <tr>
                         <th>run_id</th>
                         <th>execution time</th>
+                        <th>version</th>
                         <th>state</th>
                         <th>action</th>
                     </tr>
@@ -60,6 +61,7 @@
                         [class.active]="idx==dagRunSelectionIdx">
                         <td><a (click)="gotoRunDetail(dagRun)">{{dagRun.runId}}</a></td>
                         <td>{{dagRun.executionDate}}</td>
+                        <td>{{dagRun.version}}</td>
                         <td>
                         <span class="label"
                               [ngClass]="{

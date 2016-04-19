@@ -1,0 +1,56 @@
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <form class="form-inline pull-left">
+                <div class="form-group">
+                    <input type="text" class="form-control" id="query"
+                           placeholder="search...">
+                </div>
+                <button type="submit" class="btn btn-default">search</button>
+            </form>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>id</th>
+                    <th>name</th>
+                    <th>url</th>
+                    <th>branch</th>
+                    <th>folder</th>
+                    <th>disabled</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr *ngFor="#bag of bags">
+                    <td><a (click)="showDetail(bag)"><span class="h5">{{bag.id}} </span> </a>
+                    </td>
+                    <td>{{bag.name}}</td>
+                    <td>{{bag.url}}</td>
+                    <td>{{bag.branch}}</td>
+                    <td>{{bag.folder}}</td>
+                    <td>{{bag.disabled}}</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+            <pagination [totalItems]="totalItems" [(ngModel)]="currentPage" [maxSize]="maxSize"
+                        class="pagination-sm" (pageChanged)="onPageChanged($event)"
+                        [boundaryLinks]="true" [rotate]="false" (numPages)="numPages = $event"
+                        [itemsPerPage]="itemsPerPage"
+                        previousText="&lsaquo;" nextText="&rsaquo;" firstText="&laquo;"
+                        lastText="&raquo;" class="pull-right"></pagination>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+            <div *ngIf="bagSelected">
+                <myBagForm [bag]="bagSelected"></myBagForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

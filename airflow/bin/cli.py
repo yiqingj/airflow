@@ -935,3 +935,7 @@ class CLIFactory(object):
                 sp.add_argument(*arg.flags, **kwargs)
             sp.set_defaults(func=sub['func'])
         return parser
+
+
+def get_parser():
+    return CLIFactory().get_parser()

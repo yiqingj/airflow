@@ -168,11 +168,11 @@ encrypt_s3_logs = False
 # s3_log_folder =
 
 # The folder where airflow should store remote dag git repo
-git_repo_folder = ~/.airflow/repo
+git_repo_folder = {AIRFLOW_HOME}/repo
 
 # The folder for work directory, for each dag there should be a subdirectory and local files could be saved there
 # this is useful for pipelines with dedicated queue setting to share local files without central storage solution.
-workspace_folder = ~/.airflow/workspace
+workspace_folder = {AIRFLOW_HOME}/workspace
 
 # The executor class that airflow should use. Choices include
 # SequentialExecutor, LocalExecutor, CeleryExecutor

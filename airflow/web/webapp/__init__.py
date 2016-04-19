@@ -7,6 +7,7 @@ from .api.dag import DagApi, DagListApi
 from .api.task import TaskListApi
 from .api.task_instance import TaskInstanceListApi, TaskInstanceApi
 from .api.event import EventListApi
+from .api.dag_bag import DagBagApi, DagBagListApi
 
 from .api.log import LogApi
 
@@ -33,7 +34,7 @@ def create_app(object_name):
     @app.route("/workflow")
     @app.route("/workflow/<path:path>")
     def index(path=None):
-        return send_from_directory(app.static_folder,'index.html')
+        return send_from_directory(app.static_folder, 'index.html')
 
     rest_api = Api(prefix='/api', errors=errors)
     rest_api.add_resource(DagRunApi, '/dagrun/<dag_id>/<execution_date>')
@@ -49,6 +50,9 @@ def create_app(object_name):
     rest_api.add_resource(LogApi, '/log/<dag_id>/<task_id>/<execution_date>/<version>')
 
     rest_api.add_resource(EventListApi, '/event')
+
+    rest_api.add_resource(DagBagApi, '/bag/<bag_id>')
+    rest_api.add_resource(DagBagListApi, '/bag')
 
     rest_api.init_app(app)
     CORS(app)
