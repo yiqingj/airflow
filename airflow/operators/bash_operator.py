@@ -53,11 +53,11 @@ class BashOperator(BaseOperator):
         Execute the bash command in a temporary directory
         which will be cleaned afterwards
         """
-        logging.info(self.env)
+        # logging.info(self.env)
         bash_command = Template(self.bash_command).safe_substitute(self.env)
         # bash_command = self.bash_command
         ws = context['ws']
-        logging.info("tmp dir root location: \n" + gettempdir())
+        # logging.info("tmp dir root location: \n" + gettempdir())
         logging.info("current working directory: \n "+ws)
         with TemporaryDirectory(prefix='airflowtmp') as tmp_dir:
             with NamedTemporaryFile(dir=tmp_dir, prefix=self.task_id) as f:

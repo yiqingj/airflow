@@ -323,6 +323,11 @@ def list_tasks(args, dag=None):
 
 
 def test(args, dag=None):
+
+    # logging.root.handlers = []
+    # logging.basicConfig(
+    #     level=settings.LOGGING_LEVEL,
+    #     format=settings.SIMPLE_LOG_FORMAT)
     dag = dag or get_dag(args)
 
     task = dag.get_task(task_id=args.task_id)
