@@ -140,8 +140,7 @@ setup(
         'iso8601==0.1.11',
         'GitPython==1.0.2',
         'Flask-RESTful==0.3.5',
-        'pytz==2015.7', 'toposort',
-
+        'pytz==2015.7', 
     ],
     extras_require={
         'all': devel_all,
