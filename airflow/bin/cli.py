@@ -341,6 +341,7 @@ def test(args, dag=None):
     else:
         ti.run(force=True, ignore_dependencies=True, test_mode=True)
 
+
 def test_all(args, dag=None):
 
     logging.basicConfig(
@@ -348,8 +349,19 @@ def test_all(args, dag=None):
         format=settings.SIMPLE_LOG_FORMAT)
     dag = dag or get_dag(args)
 
-    tasks = dag.get_tasks_in_order()
-    print(tasks)
+    task_sorted = dag.get_tasks_in_order()
+    for task_set in task_sorted:
+        for task_id in task_set:
+            task = dag.get_task(task_id=task_id)
+            if args.task_params:
+                passed_in_params = json.loads(args.task_params)
+                task.params.update(passed_in_params)
+            ti = TaskInstance(task, args.execution_date)
+
+            if args.dry_run:
+                ti.dry_run()
+            else:
+                ti.run(force=True, ignore_dependencies=True, test_mode=True)
 
 
 
