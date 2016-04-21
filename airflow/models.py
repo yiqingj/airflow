@@ -2847,6 +2847,15 @@ class DAG(LoggingMixin):
         self.get_task(upstream_task_id).set_downstream(
             self.get_task(downstream_task_id))
 
+    def get_tasks_in_order(self):
+        """
+        get a list of tasks that follows execution order which makes it easy to test one by one
+        """
+        from toposort import toposort
+        tasks = self.tasks
+        data = {task.task_id: set(task.upstream_task_ids) for task in self.tasks if task.upstream_task_ids}
+        return list(toposort(data))
+
     def get_task_instances(
             self, session, start_date=None, end_date=None, state=None):
         TI = TaskInstance

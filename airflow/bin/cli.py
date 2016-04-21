@@ -324,10 +324,9 @@ def list_tasks(args, dag=None):
 
 def test(args, dag=None):
 
-    # logging.root.handlers = []
-    # logging.basicConfig(
-    #     level=settings.LOGGING_LEVEL,
-    #     format=settings.SIMPLE_LOG_FORMAT)
+    logging.basicConfig(
+        level=settings.LOGGING_LEVEL,
+        format=settings.SIMPLE_LOG_FORMAT)
     dag = dag or get_dag(args)
 
     task = dag.get_task(task_id=args.task_id)
@@ -341,6 +340,17 @@ def test(args, dag=None):
         ti.dry_run()
     else:
         ti.run(force=True, ignore_dependencies=True, test_mode=True)
+
+def test_all(args, dag=None):
+
+    logging.basicConfig(
+        level=settings.LOGGING_LEVEL,
+        format=settings.SIMPLE_LOG_FORMAT)
+    dag = dag or get_dag(args)
+
+    tasks = dag.get_tasks_in_order()
+    print(tasks)
+
 
 
 def render(args):
@@ -875,6 +885,14 @@ class CLIFactory(object):
                 "dependencies or recording it's state in the database."),
             'args': (
                 'dag_id', 'task_id', 'execution_date', 'subdir', 'dry_run',
+                'task_params'),
+        }, {
+            'func': test_all,
+            'help': (
+                "Test a task instance. This will run a task without checking for "
+                "dependencies or recording it's state in the database."),
+            'args': (
+                'dag_id', 'execution_date', 'subdir', 'dry_run',
                 'task_params'),
         }, {
             'func': webserver,

@@ -5,7 +5,7 @@ import os
 import sys
 
 # Kept manually in sync with airflow.__version__
-version = '2.0.1'
+version = '2.0.2'
 
 
 class Tox(TestCommand):
@@ -140,7 +140,7 @@ setup(
         'iso8601==0.1.11',
         'GitPython==1.0.2',
         'Flask-RESTful==0.3.5',
-        'pytz==2015.7',
+        'pytz==2015.7', 'toposort',
 
     ],
     extras_require={

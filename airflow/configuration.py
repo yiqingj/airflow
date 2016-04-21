@@ -213,7 +213,7 @@ max_active_runs_per_dag = 16
 # Whether to load the examples that ship with Airflow. It's good to
 # get started, but you probably want to set this to False in a production
 # environment
-load_examples = True
+load_examples = False
 
 # Where your Airflow plugins are stored
 plugins_folder = {AIRFLOW_HOME}/plugins
@@ -661,7 +661,7 @@ if not os.path.isfile(AIRFLOW_CONFIG):
     with open(AIRFLOW_CONFIG, 'w') as f:
         f.write(parameterized_config(DEFAULT_CONFIG))
 
-logging.info("Reading the config from " + AIRFLOW_CONFIG)
+print("Reading the config from " + AIRFLOW_CONFIG)
 
 
 def test_mode():

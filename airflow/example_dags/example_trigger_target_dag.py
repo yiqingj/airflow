@@ -1,7 +1,7 @@
 from airflow.operators import BashOperator, PythonOperator
 from airflow.models import DAG
 from datetime import datetime
-
+import pytz
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
