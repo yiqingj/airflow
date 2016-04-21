@@ -80984,7 +80984,7 @@ $__System.register("289", ["139", "191", "18f", "288", "28a"], function(exports_
   };
 });
 
-$__System.register("28b", ["139", "153", "18f", "190", "28a", "191", "289"], function(exports_1, context_1) {
+$__System.register("28b", ["139", "153", "18f", "190", "28a", "191", "288", "289"], function(exports_1, context_1) {
   "use strict";
   var __moduleName = context_1 && context_1.id;
   var __decorate = (this && this.__decorate) || function(decorators, target, key, desc) {
@@ -81009,6 +81009,7 @@ $__System.register("28b", ["139", "153", "18f", "190", "28a", "191", "289"], fun
       ng2_bootstrap_1,
       setting_service_1,
       router_1,
+      bag_1,
       bag_create_component_1;
   var BagComponent;
   return {
@@ -81024,6 +81025,8 @@ $__System.register("28b", ["139", "153", "18f", "190", "28a", "191", "289"], fun
       setting_service_1 = setting_service_1_1;
     }, function(router_1_1) {
       router_1 = router_1_1;
+    }, function(bag_1_1) {
+      bag_1 = bag_1_1;
     }, function(bag_create_component_1_1) {
       bag_create_component_1 = bag_create_component_1_1;
     }],
@@ -81073,6 +81076,10 @@ $__System.register("28b", ["139", "153", "18f", "190", "28a", "191", "289"], fun
           }, function(error) {
             return _this.errorMessage = error;
           });
+        };
+        BagComponent.prototype.createBag = function() {
+          this.isShowDetail = true;
+          this.bagSelected = new bag_1.Bag();
         };
         __decorate([core_1.Input(), __metadata('design:type', Array)], BagComponent.prototype, "bags", void 0);
         __decorate([core_1.Output(), __metadata('design:type', core_1.EventEmitter)], BagComponent.prototype, "goDetailEvent", void 0);
