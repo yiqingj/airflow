@@ -1188,8 +1188,9 @@ class TaskInstance(Base):
         self.pool = pool or task.pool
         self.test_mode = test_mode
         self.force = force
-        self.refresh_from_db()
-        self.clear_xcom_data()
+        if not test_mode:
+            self.refresh_from_db()
+            self.clear_xcom_data()
         self.job_id = job_id
         iso = datetime.now(pytz.utc).isoformat()
         self.hostname = socket.gethostname()
@@ -1387,7 +1388,7 @@ class TaskInstance(Base):
             tables = task.params['tables']
 
         ds = self.execution_date.isoformat()[:10]
-        ts = self.execution_date.isoformat()
+        ts = self.execution_date.isoformat()[:19]
         yesterday_ds = (self.execution_date - timedelta(1)).isoformat()[:10]
         tomorrow_ds = (self.execution_date + timedelta(1)).isoformat()[:10]
 
