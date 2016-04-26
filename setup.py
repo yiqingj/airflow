@@ -5,7 +5,7 @@ import os
 import sys
 
 # Kept manually in sync with airflow.__version__
-version = '2.0.3'
+version = '2.0.4'
 
 
 class Tox(TestCommand):
@@ -128,19 +128,19 @@ setup(
         'gunicorn>=19.3.0, <19.4.0',  # 19.4.? seemed to have issues
         'jinja2>=2.7.3, <3.0',
         'markdown>=2.5.2, <3.0',
-        'pandas>=0.15.2, <1.0.0',
+        # 'pandas>=0.15.2, <1.0.0',
         'pygments>=2.0.1, <3.0',
         'python-dateutil>=2.3, <3',
         'requests>=2.5.1, <3',
         'setproctitle>=1.1.8, <2',
         'sqlalchemy>=0.9.8',
-        'thrift>=0.9.2, <0.10',
+        # 'thrift>=0.9.2, <0.10',
         'Flask-WTF==0.12',
         'Flask-SQLAlchemy',
         'iso8601==0.1.11',
         'GitPython==1.0.2',
         'Flask-RESTful==0.3.5',
-        'pytz==2015.7', 
+        'pytz==2015.7',
     ],
     extras_require={
         'all': devel_all,
