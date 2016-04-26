@@ -76,6 +76,8 @@ DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'DAGS_FOLDER'))
 GIT_REPO_FOLDER = os.path.expanduser(configuration.get('core', 'GIT_REPO_FOLDER'))
 XCOM_RETURN_KEY = 'return_value'
 
+Stats = settings.Stats
+
 ENCRYPTION_ON = False
 try:
     from cryptography.fernet import Fernet
@@ -402,6 +404,7 @@ class DagBag(LoggingMixin):
         ignoring files that match any of the regex patterns specified
         in the file.
         """
+        start_dttm = datetime.now()
         dag_folder = dag_folder or self.dag_folder
         if os.path.isfile(dag_folder):
             self.process_file(dag_folder, only_if_updated=only_if_updated)
@@ -428,6 +431,12 @@ class DagBag(LoggingMixin):
                                 filepath, only_if_updated=only_if_updated, source=source)
                     except Exception as e:
                         logging.warning(e)
+        Stats.gauge(
+            'collect_dags', (datetime.now() - start_dttm).total_seconds(), 1)
+        Stats.gauge(
+            'dagbag_size', len(self.dags), 1)
+        Stats.gauge(
+            'dagbag_import_errors', len(self.import_errors), 1)
 
     def collect_remote_dags(self, only_if_updated=True):
         """Collection dags from git repo. in the future we might support more
@@ -619,6 +628,8 @@ class Connection(Base):
                 return hooks.OracleHook(oracle_conn_id=self.conn_id)
             elif self.conn_type == 'vertica':
                 return contrib_hooks.VerticaHook(vertica_conn_id=self.conn_id)
+            elif self.conn_type == 'cloudant':
+                return contrib_hooks.CloudantHook(cloudant_conn_id=self.conn_id)
         except:
             return None
 
@@ -1203,6 +1214,7 @@ class TaskInstance(Base):
                 "Task {self} previously succeeded"
                 " on {self.end_date}".format(**locals())
             )
+            Stats.incr('previously_succeeded', 1, 1)
         elif (
                 not ignore_dependencies and
                 not self.are_dependencies_met(
@@ -3254,7 +3266,6 @@ class Variable(Base):
         session.query(cls).filter(cls.key == key).delete()
         session.add(Variable(key=key, val=stored_value))
         session.flush()
-
 
 
 class XCom(Base):
