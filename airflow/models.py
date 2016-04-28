@@ -69,6 +69,9 @@ from airflow.utils.state import State
 from airflow.utils.timeout import timeout
 from airflow.utils.trigger_rule import TriggerRule
 
+from sqlalchemy.dialects.postgresql import ARRAY, HSTORE
+from sqlalchemy.ext.mutable import MutableDict
+
 Base = declarative_base()
 ID_LEN = 250
 SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
@@ -676,7 +679,6 @@ class DagPickle(Base):
         self.pickle_hash = hash(dag)
         self.pickle = dag
 
-from sqlalchemy.dialects.postgresql import ARRAY
 
 class Task(Base):
     """
@@ -3535,4 +3537,13 @@ class DagBagModel(Base):
     description = Column(TEXT, nullable=True)
 
 
+class Artifact(Base):
+    __tablename__='artifact'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    type= Column(String(1000), nullable=False)
+    category= Column(String(1000), nullable=False)
+    timestamp= Column(DateTime(timezone=True))
+    url = Column(String(1000), nullable=False)
+    tags = Column(MutableDict.as_mutable(HSTORE))  # extend to infinity!
 # do we need plugin auto updated? if so also need a plugin table here.

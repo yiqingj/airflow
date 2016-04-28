@@ -8,6 +8,7 @@ from .api.task import TaskListApi
 from .api.task_instance import TaskInstanceListApi, TaskInstanceApi
 from .api.event import EventListApi
 from .api.dag_bag import DagBagApi, DagBagListApi
+from .api.artifact import ArtifactApi, ArtifactListApi
 
 from .api.log import LogApi
 
@@ -53,6 +54,9 @@ def create_app(object_name):
 
     rest_api.add_resource(DagBagApi, '/bag/<bag_id>')
     rest_api.add_resource(DagBagListApi, '/bag')
+
+    rest_api.add_resource(ArtifactApi, '/artifact/<artifact_id>')
+    rest_api.add_resource(ArtifactListApi, '/artifact')
 
     rest_api.init_app(app)
     CORS(app)

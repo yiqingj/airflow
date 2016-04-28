@@ -37,3 +37,9 @@ event_parser.add_argument('dagId')
 event_parser.add_argument('taskId')
 event_parser.add_argument('executionDate', type=inputs.datetime_from_iso8601)
 event_parser.add_argument('version', type=int)
+
+
+artifact_parser = pagination_parser.copy()
+artifact_parser.add_argument('type')
+artifact_parser.add_argument('category')
+

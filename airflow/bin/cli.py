@@ -362,13 +362,13 @@ def test(args, dag=None):
 
 
 def test_all(args, dag=None):
-
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
         format=settings.SIMPLE_LOG_FORMAT)
     dag = dag or get_dag(args)
 
-    task_sorted = dag.get_tasks_in_order()
+    task_sorted = _sort_tasks(dag, args.filter)
+    print('Running tasks: {}'.format(task_sorted))
     for task_set in task_sorted:
         for task_id in task_set:
             task = dag.get_task(task_id=task_id)
@@ -382,6 +382,49 @@ def test_all(args, dag=None):
             else:
                 ti.run(force=True, ignore_dependencies=True, test_mode=True)
 
+
+def _sort_tasks(dag, filter_str):
+    from toposort import toposort
+    filters = filter_str.split(',') if filter_str else []
+    tree_filter = [filter for filter in filters if not filter.startswith('-')]
+    if len(tree_filter) > 1:
+        print("\033[91m only one tree based filter allowed! \033[0m")
+        sys.exit(1)
+    tasks = []
+    if tree_filter:
+        prefix = tree_filter[0][:1]
+        task = dag.get_task(tree_filter[0][1:])
+        if prefix == '+':
+            _add_task(task, tasks, is_up=True)
+        elif prefix == '^':
+            task._upstream_task_ids = []
+            _add_task(task, tasks, is_up=False)
+        else:
+            print("\033[91m Prefix could only be +,-,^ \033[0m")
+            sys.exit(1)
+        # tasks = tasks[1:] # remove the starting
+    else:
+        tasks = dag.tasks
+
+    data = {t.task_id: set(t.upstream_task_ids) for t in tasks}
+
+    return list(toposort(data))
+
+
+def _add_task(task, tasks, is_up=False):
+    tasks.append(task)
+    if is_up:
+        if not task.upstream_list:
+            return
+        else:
+            for t in task.upstream_list:
+                _add_task(t, tasks, is_up)
+    else:
+        if not task.downstream_list:
+            return
+        else:
+            for t in task.downstream_list:
+                _add_task(t, tasks, is_up)
 
 
 def render(args):
@@ -871,6 +914,13 @@ class CLIFactory(object):
         'task_params': Arg(
             ("-tp", "--task_params"),
             help="Sends a JSON params dict to the task"),
+        'test_filter': Arg(
+            ("-f", "--filter"),
+            help="+mytask: run task and all upstreams, "
+                 "^mytask: run task all all downstreams, "
+                 "-mytask: exclude task"
+                 ". Multiple filters could be comma separated."
+        )
     }
     subparsers = (
         {
@@ -952,10 +1002,10 @@ class CLIFactory(object):
         }, {
             'func': test_all,
             'help': (
-                "Test a task instance. This will run a task without checking for "
-                "dependencies or recording it's state in the database."),
+                "Test all task instances. This will run tasks based in depedency order without "
+                "checking for dependencies or recording it's state in the database."),
             'args': (
-                'dag_id', 'execution_date', 'subdir', 'dry_run',
+                'dag_id', 'execution_date', 'test_filter', 'subdir', 'dry_run',
                 'task_params'),
         }, {
             'func': webserver,

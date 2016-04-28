@@ -12,10 +12,7 @@ from .parsers import (
 
 from .task_instance import task_instance_fields
 
-param_fields = {
-    'key': fields.String,
-    'value': fields.String
-}
+
 
 dag_run_fields = {
     'id': fields.Integer,

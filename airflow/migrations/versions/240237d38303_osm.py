@@ -15,7 +15,7 @@ depends_on = None
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, HSTORE
 from airflow import settings
 
 
@@ -44,6 +44,19 @@ def upgrade():
             sa.Column('folder', sa.String(length=500), nullable=False),
             sa.Column('disabled', sa.Boolean(), server_default='false'),
             sa.Column('description', sa.TEXT, nullable=True),
+            sa.PrimaryKeyConstraint('id')
+        )
+
+    if 'artifact' not in tables:
+        op.create_table(
+            'artifact',
+            sa.Column('id', sa.Integer(), nullable=False),
+            sa.Column('name', sa.String(length=100), nullable=False),
+            sa.Column('type', sa.String(length=100), nullable=False),
+            sa.Column('category', sa.String(length=100), nullable=True),
+            sa.Column('url', sa.String(length=500), nullable=False),
+            sa.Column('timestamp', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('tags', HSTORE),
             sa.PrimaryKeyConstraint('id')
         )
 
