@@ -13,7 +13,7 @@
     <div class="row">
         <div class="col-md-12">
             <button type="button" class="btn btn-default btn-xs"
-                    (click)="createBag()" title="start a new pipeline run"><i
+                    (click)="createBag()" title="create new bag"><i
                     class="fa fa-plus"></i>
             </button>
         </div>
@@ -29,17 +29,26 @@
                     <th>branch</th>
                     <th>folder</th>
                     <th>disabled</th>
+                    <th></th>
                 </tr>
                 </thead>
                 <tbody>
                 <tr *ngFor="#bag of bags">
-                    <td><a (click)="showDetail(bag)"><span class="h5">{{bag.id}} </span> </a>
+                    <td><a (click)="edit(bag)"><span class="h5">{{bag.id}} </span> </a>
                     </td>
                     <td>{{bag.name}}</td>
                     <td>{{bag.url}}</td>
                     <td>{{bag.branch}}</td>
                     <td>{{bag.folder}}</td>
                     <td>{{bag.disabled}}</td>
+                    <td>
+                        <button type="button" class="btn btn-default btn-xs"
+                                (click)="edit(bag)" title="start a new pipeline run">Edit
+                        </button>
+                        <button type="button" class="btn btn-default btn-xs"
+                                (click)="delete(bag)" title="start a new pipeline run">Delete
+                        </button>
+                    </td>
                 </tr>
                 </tbody>
             </table>

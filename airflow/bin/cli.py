@@ -406,9 +406,20 @@ def _sort_tasks(dag, filter_str):
     else:
         tasks = dag.tasks
 
+    excludes = [filter[1:] for filter in filters if filter.startswith('-')]
+
     data = {t.task_id: set(t.upstream_task_ids) for t in tasks}
 
-    return list(toposort(data))
+    ordered_tasks = list(toposort(data))
+
+    if excludes:
+        excluded = []
+        for batch in ordered_tasks:
+            new_batch = {t for t in batch if t not in excludes}
+            if new_batch:
+                excluded.append(new_batch)
+        ordered_tasks = excluded
+    return ordered_tasks
 
 
 def _add_task(task, tasks, is_up=False):
