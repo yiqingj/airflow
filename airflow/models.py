@@ -2520,6 +2520,7 @@ class DAG(LoggingMixin):
         os_env = {k: v for k, v in os.environ.items() if
                   k in env.viewkeys() & os.environ.keys()}
         env.update(os_env)
+        params.update(env)
         env.update({
             'PATH': os.environ['PATH']
         })
@@ -3543,7 +3544,7 @@ class DagBagModel(Base):
 class Artifact(Base):
     __tablename__='artifact'
     id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False)
+    dag_id = Column(String(100), nullable=False)
     type= Column(String(1000), nullable=False)
     category= Column(String(1000), nullable=False)
     timestamp= Column(DateTime(timezone=True))

@@ -51,7 +51,7 @@ def upgrade():
         op.create_table(
             'artifact',
             sa.Column('id', sa.Integer(), nullable=False),
-            sa.Column('name', sa.String(length=100), nullable=False),
+            sa.Column('dag_id', sa.String(length=100), nullable=False),
             sa.Column('type', sa.String(length=100), nullable=False),
             sa.Column('category', sa.String(length=100), nullable=True),
             sa.Column('url', sa.String(length=500), nullable=False),
