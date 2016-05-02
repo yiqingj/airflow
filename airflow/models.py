@@ -449,9 +449,11 @@ class DagBag(LoggingMixin):
             try:
                 base_dir = configuration.get('core', 'GIT_REPO_FOLDER')
                 path = os.path.join(base_dir, bag.name)
+                is_init = False
                 if not os.path.exists(path):
                     self.logger.info('cloning repo from {}'.format(bag.url))
                     repo = Repo.clone_from(bag.url, path)
+                    is_init = True
                 else:
                     repo = Repo(path)
                 self.logger.info('updating repo from {}'.format(bag.url))
@@ -460,7 +462,7 @@ class DagBag(LoggingMixin):
                 for info in infos:
                     if not info.name.split('/')[1] == bag.branch:
                         continue
-                    if not (info.flags & FetchInfo.HEAD_UPTODATE) or not only_if_updated:
+                    if not (info.flags & FetchInfo.HEAD_UPTODATE) or not only_if_updated or is_init:
                         self.logger.info('loading from git repo...')
                         dag_folder = os.path.join(base_dir, bag.name, bag.folder)
                         self.collect_dags(dag_folder, only_if_updated=only_if_updated, source=bag.name)
