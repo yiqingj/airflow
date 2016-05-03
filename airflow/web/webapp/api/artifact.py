@@ -45,13 +45,19 @@ class ArtifactListApi(Resource):
         args = artifact_parser.parse_args()
         page = args.get('page')
         per_page = args.get('size')
+        dag_id = args.get('dagId')
         type = args.get('type')
         category = args.get('category')
+        timestamp = args.get('timestamp')
         query = session.query(Artifact)
+        if dag_id:
+            query = query.filter(Artifact.dag_id == dag_id)
         if type:
             query = query.filter(Artifact.type == type)
         if category:
             query = query.filter(Artifact.category == category)
+        if timestamp:
+            query = query.filter(Artifact.timestamp == timestamp)
 
         query = query.limit(per_page).offset((page - 1) * per_page)
 

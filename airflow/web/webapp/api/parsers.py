@@ -40,6 +40,9 @@ event_parser.add_argument('version', type=int)
 
 
 artifact_parser = pagination_parser.copy()
+artifact_parser.add_argument('dagId')
 artifact_parser.add_argument('type')
 artifact_parser.add_argument('category')
+artifact_parser.add_argument('timestamp')
+
 

@@ -472,7 +472,7 @@ class SchedulerJob(BaseJob):
                     ti = TI(task, next_run_date)
                     ti.upstreams = [t.task_id for t in task.upstream_list]
                     ti.downstreams = [t.task_id for t in task.downstream_list]
-                    session.add(ti)
+                    session.merge(ti)
                 session.commit()
                 return next_run
 
