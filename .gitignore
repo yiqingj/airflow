@@ -24,3 +24,4 @@ unittests.cfg
 error.log
 unittests.db
 rat-results.txt
+airflow/web/webapp/static

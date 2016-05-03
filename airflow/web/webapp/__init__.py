@@ -34,6 +34,7 @@ def create_app(object_name):
     @app.route("/dashboard")
     @app.route("/workflow")
     @app.route("/workflow/<path:path>")
+    @app.route("/workflow/dag/<path:path>")
     def index(path=None):
         return send_from_directory(app.static_folder, 'index.html')
 
