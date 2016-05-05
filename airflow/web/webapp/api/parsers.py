@@ -41,8 +41,14 @@ event_parser.add_argument('version', type=int)
 
 artifact_parser = pagination_parser.copy()
 artifact_parser.add_argument('dagId')
+artifact_parser.add_argument('query')
 artifact_parser.add_argument('type')
 artifact_parser.add_argument('category')
 artifact_parser.add_argument('timestamp')
+
+
+massilia_parser = reqparse.RequestParser()
+massilia_parser.add_argument('bucket')
+massilia_parser.add_argument('prefix')
 
 

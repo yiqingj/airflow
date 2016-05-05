@@ -14,7 +14,7 @@ param_fields = {
 
 artifact_fields = {
     'id': fields.String(),
-    'name': fields.String(),
+    'dagId': fields.String(attribute='dag_id'),
     'type': fields.String(),
     'category': fields.String(),
     'timestamp': fields.String(),
@@ -48,6 +48,7 @@ class ArtifactListApi(Resource):
         dag_id = args.get('dagId')
         type = args.get('type')
         category = args.get('category')
+        queryText = args.get('query')
         timestamp = args.get('timestamp')
         query = session.query(Artifact)
         if dag_id:
@@ -58,6 +59,8 @@ class ArtifactListApi(Resource):
             query = query.filter(Artifact.category == category)
         if timestamp:
             query = query.filter(Artifact.timestamp == timestamp)
+        if queryText:
+            query = query.filter(Artifact.dag_id.like('%{}%'.format(queryText)))
 
         query = query.limit(per_page).offset((page - 1) * per_page)
 

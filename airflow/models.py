@@ -809,10 +809,7 @@ class TaskInstance(Base):
         iso = self.execution_date.isoformat()
         BASE_URL = configuration.get('webserver', 'BASE_URL')
         return BASE_URL + (
-            "/admin/airflow/log"
-            "?dag_id={self.dag_id}"
-            "&task_id={self.task_id}"
-            "&execution_date={iso}"
+            "/workflow/task_run/{self.dag_id}/{self.task_id}/{iso}/version;version={self.version}"
         ).format(**locals())
 
     @property
@@ -1493,7 +1490,7 @@ class TaskInstance(Base):
 
     def email_alert(self, exception, is_retry=False):
         task = self.task
-        title = "Airflow alert: {self}".format(**locals())
+        title = "Hawkeye alert: {self}".format(**locals())
         exception = str(exception).replace('\n', '<br>')
         try_ = task.retries + 1
         body = (
@@ -1502,7 +1499,6 @@ class TaskInstance(Base):
             "Log: <a href='{self.log_url}'>Link</a><br>"
             "Host: {self.hostname}<br>"
             "Log file: {self.log_filepath}<br>"
-            "Mark success: <a href='{self.mark_success_url}'>Link</a><br>"
         ).format(**locals())
         send_email(task.email, title, body)
 

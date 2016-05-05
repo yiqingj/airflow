@@ -11,6 +11,7 @@ from .api.dag_bag import DagBagApi, DagBagListApi
 from .api.artifact import ArtifactApi, ArtifactListApi
 
 from .api.log import LogApi
+from .api.massilia import MassiliaListApi
 
 # these error messages only works when debug mode is False.
 errors = {
@@ -58,6 +59,8 @@ def create_app(object_name):
 
     rest_api.add_resource(ArtifactApi, '/artifact/<artifact_id>')
     rest_api.add_resource(ArtifactListApi, '/artifact')
+
+    rest_api.add_resource(MassiliaListApi, '/blob')
 
     rest_api.init_app(app)
     CORS(app)
