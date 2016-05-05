@@ -1440,6 +1440,7 @@ class TaskInstance(Base):
             env = task.dag.default_args.get('env',None)
             if env:
                 env.update(conf)
+                params.update(env)
 
         workspace_folder = configuration.get('core','workspace_folder')
 
@@ -1499,6 +1500,7 @@ class TaskInstance(Base):
             "Log: <a href='{self.log_url}'>Link</a><br>"
             "Host: {self.hostname}<br>"
             "Log file: {self.log_filepath}<br>"
+            "Mark success: <a href='{self.mark_success_url}'>Link</a><br>"
         ).format(**locals())
         send_email(task.email, title, body)
 
@@ -2516,7 +2518,7 @@ class DAG(LoggingMixin):
         os_env = {k: v for k, v in os.environ.items() if
                   k in env.viewkeys() & os.environ.keys()}
         env.update(os_env)
-        params.update(env)
+
         env.update({
             'PATH': os.environ['PATH']
         })
