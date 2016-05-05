@@ -1434,13 +1434,14 @@ class TaskInstance(Base):
         if task.params:
             params.update(task.params)
 
+        env = task.dag.default_args.get('env',None)
         if dag_run and dag_run.conf:
             conf = {param['key']:param['value'] for param in dag_run.conf}
             params.update(conf)
-            env = task.dag.default_args.get('env',None)
             if env:
                 env.update(conf)
-                params.update(env)
+        if env:
+            params.update(env)
 
         workspace_folder = configuration.get('core','workspace_folder')
 
