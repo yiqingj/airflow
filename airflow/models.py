@@ -75,6 +75,8 @@ from airflow.utils.trigger_rule import TriggerRule
 from sqlalchemy.dialects.postgresql import ARRAY, HSTORE
 from sqlalchemy.ext.mutable import MutableDict
 
+from dateutil.tz import tzlocal
+
 Base = declarative_base()
 ID_LEN = 250
 SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
@@ -1445,6 +1447,7 @@ class TaskInstance(Base):
 
         ds_nodash = ds.replace('-', '')
         ts_nodash = ts.replace('-', '').replace(':', '')
+        ts_number = ts_nodash.replace('T','')
         yesterday_ds_nodash = yesterday_ds.replace('-', '')
         tomorrow_ds_nodash = tomorrow_ds.replace('-', '')
 
@@ -1491,6 +1494,7 @@ class TaskInstance(Base):
             'ds_nodash': ds_nodash,
             'ts': ts,
             'ts_nodash': ts_nodash,
+            'ts_number': ts_number,
             'ws': ws,
             'yesterday_ds': yesterday_ds,
             'yesterday_ds_nodash': yesterday_ds_nodash,
@@ -2567,6 +2571,8 @@ class DAG(LoggingMixin):
             self.params.update(self.default_args['params'])
             del self.default_args['params']
 
+        if start_date:
+            start_date = start_date.replace(tzinfo=tzlocal())
         validate_key(dag_id)
         self.task_dict = dict()
         self.dag_id = dag_id
