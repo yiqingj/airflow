@@ -932,7 +932,7 @@ class TaskInstance(Base):
         """
         Returns a tuple that identifies the task instance uniquely
         """
-        return (self.dag_id, self.task_id, self.execution_date)
+        return (self.dag_id, self.task_id, self.execution_date, self.version)
 
     def set_state(self, state, session):
         self.state = state
