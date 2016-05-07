@@ -429,17 +429,15 @@ class SchedulerJob(BaseJob):
                     # Migrating from previous version
                     # make the past 5 runs active
                     next_run_date = dag.date_range(latest_run, -5)[0]
-                    next_run_date = next_run_date.replace(tzinfo=tzlocal())
                 else:
                     task_start_dates = [t.start_date for t in dag.tasks]
                     if task_start_dates:
                         next_run_date = min(task_start_dates)
-                        next_run_date = next_run_date.replace(tzinfo=tzlocal())
+                        next_run_date = next_run_date.replace(tzinfo=pytz.utc)
                     else:
                         next_run_date = None
             elif dag.schedule_interval != '@once':
-                next_run_date = dag.following_schedule(last_scheduled_run)
-                next_run_date = next_run_date.replace(tzinfo=tzlocal())
+                next_run_date = dag.following_schedule(last_scheduled_run)  #TODO need to convert to UTC!
 
             # don't ever schedule prior to the dag's start_date
             if dag.start_date:
@@ -447,11 +445,10 @@ class SchedulerJob(BaseJob):
 
             # this structure is necessary to avoid a TypeError from concatenating
             # NoneType
-            if dag.schedule_interval == '@once':
-                schedule_end = next_run_date
-            elif next_run_date:
-                schedule_end = dag.following_schedule(next_run_date)
-                schedule_end = schedule_end.replace(tzinfo=tzlocal())
+            # if dag.schedule_interval == '@once':
+            #     schedule_end = next_run_date
+            # elif next_run_date:
+            #     schedule_end = dag.following_schedule(next_run_date)
 
             # Don't schedule a dag beyond its end_date (as specified by the dag param)
             if next_run_date and dag.end_date and next_run_date > dag.end_date:
@@ -463,10 +460,11 @@ class SchedulerJob(BaseJob):
             task_end_dates = [t.end_date for t in dag.tasks if t.end_date]
             if task_end_dates:
                 min_task_end_date = min(task_end_dates)
+                min_task_end_date = min_task_end_date.replace(tzinfo=pytz.utc)
             if next_run_date and min_task_end_date and next_run_date > min_task_end_date:
                 return
 
-            if next_run_date and schedule_end and schedule_end <= datetime.now(pytz.utc):
+            if next_run_date <= datetime.now(pytz.utc):
                 next_run = DagRun(
                     dag_id=dag.dag_id,
                     run_id='scheduled__' + next_run_date.isoformat(),
@@ -593,7 +591,7 @@ class SchedulerJob(BaseJob):
         Used to identify queued tasks and schedule them for further processing.
         """
         for key, executor_state in list(executor.get_event_buffer().items()):
-            dag_id, task_id, execution_date = key
+            dag_id, task_id, execution_date, version = key
             if dag_id not in dagbag.dags:
                 self.logger.error(
                     'Executor reported a dag_id that was not found in the '

@@ -2572,7 +2572,7 @@ class DAG(LoggingMixin):
             del self.default_args['params']
 
         if start_date:
-            start_date = start_date.replace(tzinfo=tzlocal())
+            start_date = start_date.replace(tzinfo=pytz.utc)
         validate_key(dag_id)
         self.task_dict = dict()
         self.dag_id = dag_id
@@ -2657,6 +2657,7 @@ class DAG(LoggingMixin):
             num=num, delta=self._schedule_interval)
 
     def following_schedule(self, dttm):
+        dttm = dttm.astimezone(pytz.utc)
         if isinstance(self._schedule_interval, six.string_types):
             cron = croniter(self._schedule_interval, dttm)
             return cron.get_next(datetime)
