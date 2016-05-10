@@ -86,7 +86,7 @@ class BaseJob(Base, LoggingMixin):
             executor=executors.DEFAULT_EXECUTOR,
             heartrate=conf.getfloat('scheduler', 'JOB_HEARTBEAT_SEC'),
             *args, **kwargs):
-        self.hostname = socket.gethostname()
+        self.hostname = socket.getfqdn()
         self.executor = executor
         self.executor_class = executor.__class__.__name__
         self.start_date = datetime.now(pytz.utc)
@@ -243,7 +243,6 @@ class SchedulerJob(BaseJob):
 
         self.refresh_dags_every = refresh_dags_every
         self.do_pickle = do_pickle
-        self.queued_tis = set()
         super(SchedulerJob, self).__init__(*args, **kwargs)
 
         self.heartrate = conf.getint('scheduler', 'SCHEDULER_HEARTBEAT_SEC')
@@ -585,47 +584,22 @@ class SchedulerJob(BaseJob):
 
         session.close()
 
-    def process_events(self, executor, dagbag):
-        """
-        Respond to executor events.
-
-        Used to identify queued tasks and schedule them for further processing.
-        """
-        for key, executor_state in list(executor.get_event_buffer().items()):
-            dag_id, task_id, execution_date, version = key
-            if dag_id not in dagbag.dags:
-                self.logger.error(
-                    'Executor reported a dag_id that was not found in the '
-                    'DagBag: {}'.format(dag_id))
-                continue
-            elif not dagbag.dags[dag_id].has_task(task_id):
-                self.logger.error(
-                    'Executor reported a task_id that was not found in the '
-                    'dag: {} in dag {}'.format(task_id, dag_id))
-                continue
-            task = dagbag.dags[dag_id].get_task(task_id)
-            ti = models.TaskInstance(task, execution_date)
-            ti.refresh_from_db()
-
-            if executor_state == State.SUCCESS:
-                # collect queued tasks for prioritiztion
-                if ti.state == State.QUEUED:
-                    self.queued_tis.add(ti)
-            else:
-                # special instructions for failed executions could go here
-                pass
-
     @provide_session
     def prioritize_queued(self, session, executor, dagbag):
         # Prioritizing queued task instances
 
         pools = {p.pool: p for p in session.query(models.Pool).all()}
-
+        TI = models.TaskInstance
+        queued_tis = (
+            session.query(TI)
+            .filter(TI.state == State.QUEUED)
+            .all()
+        )
         self.logger.info(
-            "Prioritizing {} queued jobs".format(len(self.queued_tis)))
+            "Prioritizing {} queued jobs".format(len(queued_tis)))
         session.expunge_all()
         d = defaultdict(list)
-        for ti in self.queued_tis:
+        for ti in queued_tis:
             if ti.dag_id not in dagbag.dags:
                 self.logger.info(
                     "DAG no longer in dagbag, deleting {}".format(ti))
@@ -638,8 +612,6 @@ class SchedulerJob(BaseJob):
                 session.commit()
             else:
                 d[ti.pool].append(ti)
-
-        self.queued_tis.clear()
 
         dag_blacklist = set(dagbag.paused_dags())
         for pool, tis in list(d.items()):
@@ -694,6 +666,7 @@ class SchedulerJob(BaseJob):
                     open_slots -= 1
                 else:
                     session.delete(ti)
+                    session.commit()
                     continue
                 ti.task = task
 
@@ -743,7 +716,6 @@ class SchedulerJob(BaseJob):
             try:
                 loop_start_dttm = datetime.now(pytz.utc)
                 try:
-                    self.process_events(executor=executor, dagbag=dagbag)
                     self.prioritize_queued(executor=executor, dagbag=dagbag)
                 except Exception as e:
                     self.logger.exception(e)
@@ -783,15 +755,17 @@ class SchedulerJob(BaseJob):
                 self.logger.info("Starting {} scheduler jobs".format(len(jobs)))
                 for j in jobs:
                     j.start()
+
+                while any(j.is_alive() for j in jobs):
+                    while not tis_q.empty():
+                        ti_key, pickle_id = tis_q.get()
+                        dag = dagbag.dags[ti_key[0]]
+                        task = dag.get_task(ti_key[1])
+                        ti = TI(task, ti_key[2], version=ti_key[3])
+                        self.executor.queue_task_instance(ti, pickle_id=pickle_id)
+
                 for j in jobs:
                     j.join()
-
-                while not tis_q.empty():
-                    ti_key, pickle_id = tis_q.get()
-                    dag = dagbag.dags[ti_key[0]]
-                    task = dag.get_task(ti_key[1])
-                    ti = TI(task, ti_key[2], version=ti_key[3])
-                    self.executor.queue_task_instance(ti, pickle_id=pickle_id)
 
                 self.logger.info("Done queuing tasks, calling the executor's "
                               "heartbeat")

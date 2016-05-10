@@ -49,7 +49,7 @@ from airflow.configuration import AirflowConfigException
 
 import six
 
-NUM_EXAMPLE_DAGS = 16
+NUM_EXAMPLE_DAGS = 15
 DEV_NULL = '/dev/null'
 TEST_DAG_FOLDER = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), 'dags')
@@ -650,7 +650,7 @@ class CliTests(unittest.TestCase):
             dag_folder=DEV_NULL, include_examples=True)
 
     def test_cli_list_dags(self):
-        args = self.parser.parse_args(['list_dags'])
+        args = self.parser.parse_args(['list_dags', '--report'])
         cli.list_dags(args)
 
     def test_cli_list_tasks(self):

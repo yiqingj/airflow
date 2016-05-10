@@ -462,24 +462,28 @@ class DagBag(LoggingMixin):
             'dagbag_size', len(self.dags), 1)
         Stats.gauge(
             'dagbag_import_errors', len(self.import_errors), 1)
-        stats = sorted(stats, key=lambda x: x.duration, reverse=True)
-        dagbag_stats = textwrap.dedent("""\n
+        self.dagbag_stats = sorted(
+            stats, key=lambda x: x.duration, reverse=True)
+
+    def dagbag_report(self):
+        """Prints a report around DagBag loading stats"""
+        report = textwrap.dedent("""\n
         -------------------------------------------------------------------
-        DagBag stats for {dag_folder}
+        DagBag loading stats for {dag_folder}
         -------------------------------------------------------------------
         Number of DAGs: {dag_num}
         Total task number: {task_num}
         DagBag parsing time: {duration}
         {table}
         """)
-        dagbag_stats = dagbag_stats.format(
-            dag_folder=dag_folder,
+        stats = self.dagbag_stats
+        return report.format(
+            dag_folder=self.dag_folder,
             duration=sum([o.duration for o in stats]),
             dag_num=sum([o.dag_num for o in stats]),
             task_num=sum([o.dag_num for o in stats]),
             table=pprinttable(stats),
         )
-        logging.debug(dagbag_stats)
 
     def collect_remote_dags(self, only_if_updated=True):
         """Collection dags from git repo. in the future we might support more
@@ -896,16 +900,25 @@ class TaskInstance(Base):
         session.commit()
 
     @provide_session
-    def refresh_from_db(self, session=None):
+    def refresh_from_db(self, session=None, lock_for_update=False):
         """
         Refreshes the task instance from the database based on the primary key
+
+        :param lock_for_update: if True, indicates that the database should
+        lock the TaskInstance (issuing a FOR UPDATE clause) until the session
+        is committed.
         """
         TI = TaskInstance
-        ti = session.query(TI).filter(
+
+        qry = session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
-            TI.execution_date == self.execution_date,
-        ).order_by(TI.version.desc()).first()
+            TI.execution_date == self.execution_date).order_by(TI.version.desc())
+
+        if lock_for_update:
+            ti = qry.with_for_update().first()
+        else:
+            ti = qry.first()
         if ti:
             self.state = ti.state
             self.start_date = ti.start_date
@@ -939,6 +952,7 @@ class TaskInstance(Base):
         self.start_date = datetime.now(pytz.utc)
         self.end_date = datetime.now(pytz.utc)
         session.merge(self)
+        session.commit()
 
     def is_queueable(
             self,
@@ -1178,7 +1192,6 @@ class TaskInstance(Base):
             session=session, successes=successes, skipped=skipped,
             failed=failed, upstream_failed=upstream_failed, done=done,
             flag_upstream_failed=flag_upstream_failed)
-        session.commit()
         if verbose and not satisfied:
             logging.warning("Trigger rule `{}` not satisfied".format(task.trigger_rule))
         return satisfied
@@ -1241,11 +1254,11 @@ class TaskInstance(Base):
         self.test_mode = test_mode
         self.force = force
         if not test_mode:
-            self.refresh_from_db()
+            self.refresh_from_db(session=session, lock_for_update=True)
             self.clear_xcom_data()
         self.job_id = job_id
         iso = datetime.now(pytz.utc).isoformat()
-        self.hostname = socket.gethostname()
+        self.hostname = socket.getfqdn()
         self.operator = task.__class__.__name__
 
         if self.state == State.RUNNING:
@@ -2025,7 +2038,7 @@ class BaseOperator(object):
         elif self.has_dag() and self.dag is not dag:
             raise AirflowException(
                 "The DAG assigned to {} can not be changed.".format(self))
-        elif self.task_id not in [t.task_id for t in dag.tasks]:
+        elif self.task_id not in dag.task_dict:
             dag.add_task(self)
             self._dag = dag
 
@@ -2600,7 +2613,7 @@ class DAG(LoggingMixin):
 
         self._comps = {
             'dag_id',
-            'tasks',
+            'task_ids',
             'parent_dag',
             'start_date',
             'schedule_interval',
@@ -2627,7 +2640,11 @@ class DAG(LoggingMixin):
     def __hash__(self):
         hash_components = [type(self)]
         for c in self._comps:
-            val = getattr(self, c, None)
+            # task_ids returns a list and lists can't be hashed
+            if c == 'task_ids':
+                val = tuple(self.task_dict.keys())
+            else:
+                val = getattr(self, c, None)
             try:
                 hash(val)
                 hash_components.append(val)
@@ -3125,10 +3142,14 @@ class DAG(LoggingMixin):
         if not task.start_date:
             task.start_date = self.start_date
 
-        if task.task_id in [t.task_id for t in self.tasks]:
-            raise AirflowException(
-                "Task id '{0}' has already been added "
-                "to the DAG ".format(task.task_id))
+        if task.task_id in self.task_dict:
+            #TODO raise an error in Airflow 2.0
+            warnings.warn(
+                'The requested task could not be added to the DAG because a '
+                'task with task_id {} is already in the DAG. Starting in '
+                'Airflow 2.0, trying to overwrite a task will raise an '
+                'exception.'.format(task.task_id),
+                category=PendingDeprecationWarning)
         else:
             self.tasks.append(task)
             self.task_dict[task.task_id] = task
