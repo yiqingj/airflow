@@ -471,7 +471,8 @@ class SchedulerJob(BaseJob):
                     execution_date=next_run_date,
                     start_date=datetime.now(pytz.utc),
                     state=State.RUNNING,
-                    external_trigger=False
+                    external_trigger=False,
+                    conf=dag.params
                 )
                 session.add(next_run)
                 # yiqing: create all task instances when scheduling it to make web UI easier.

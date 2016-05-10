@@ -165,3 +165,21 @@ class TaskInstanceApi(Resource):
         if not task_run:
             abort(404)
         return task_run
+
+    @marshal_with(task_instance_fields)
+    @provide_session
+    def delete(self, task_id=None, dag_id=None, execution_date=None, version=None, session=None):
+        task_run = session.query(TaskInstance).filter_by(dag_id=dag_id,
+                                                         task_id=task_id,
+                                                         execution_date=execution_date,
+                                                         version=version).first()
+        if not task_run:
+            abort(404)
+
+        task_run.state = State.SHUTDOWN
+        dag_run = session.query(DagRun).filter(DagRun.dag_id == dag_id).filter(
+            DagRun.execution_date == execution_date).first()
+        dag_run.state = State.FAILED
+        session.add(task_run)
+        session.commit()
+        return task_run

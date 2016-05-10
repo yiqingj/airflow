@@ -50,6 +50,7 @@ class ArtifactListApi(Resource):
         category = args.get('category')
         queryText = args.get('query')
         timestamp = args.get('timestamp')
+        timestamp = timestamp.replace(' ','+')  # hack to fix the encoding issue.
         query = session.query(Artifact)
         if dag_id:
             query = query.filter(Artifact.dag_id == dag_id)

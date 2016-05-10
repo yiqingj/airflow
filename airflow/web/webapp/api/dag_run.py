@@ -12,8 +12,6 @@ from .parsers import (
 
 from .task_instance import task_instance_fields
 
-
-
 dag_run_fields = {
     'id': fields.Integer,
     'dagId': fields.String(attribute='dag_id'),
@@ -47,6 +45,31 @@ class DagRunApi(Resource):
         task_runs = session.query(TaskInstance).filter(
             TaskInstance.dag_id == run.dag_id,
             TaskInstance.execution_date == run.execution_date).all()
+        setattr(run, 'taskRuns', task_runs)
+        return run
+
+    @provide_session
+    @marshal_with(dag_run_fields)
+    def delete(self, dag_id=None, execution_date=None, session=None):
+        run = session.query(DagRun).filter_by(
+            dag_id=dag_id,
+            execution_date=execution_date).first()
+        if not run:
+            abort(404)
+        task_runs = session.query(TaskInstance).filter(
+            TaskInstance.dag_id == run.dag_id,
+            TaskInstance.execution_date == run.execution_date).all()
+        run.state = State.SHUTDOWN
+        session.add(run)
+        for ti in task_runs:
+            if ti.state == State.RUNNING:
+                ti.state = State.SHUTDOWN
+            elif not ti.state or ti.state == State.PENDING or ti.state == State.QUEUED:
+                ti.state = State.SKIPPED
+            else:
+                continue
+            session.add(ti)
+        session.commit()
         setattr(run, 'taskRuns', task_runs)
         return run
 

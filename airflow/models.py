@@ -2832,7 +2832,7 @@ class DAG(LoggingMixin):
                 root_ids = [t.task_id for t in self.roots]
                 roots = [t for t in tis if t.task_id in root_ids]
                 if any(
-                        r.state in (State.FAILED,  State.UPSTREAM_FAILED)
+                        r.state in (State.FAILED,  State.UPSTREAM_FAILED, State.SHUTDOWN)
                         for r in roots):
                     self.logger.info('Marking run {} failed'.format(run))
                     run.state = State.FAILED
