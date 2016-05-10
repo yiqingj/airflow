@@ -37,6 +37,18 @@ class ArtifactApi(Resource):
             abort(404)
         return artifact
 
+    @marshal_with(artifact_fields)
+    @provide_session
+    def put(self, artifact_id=None, session=None):
+        req = request.get_json()
+        tags = req.get('tags')
+        artifact = session.query(Artifact).filter(Artifact.id == artifact_id).first()
+        if not artifact:
+            abort(404)
+        artifact.tags = tags
+        session.commit()
+        return 'ok'
+
 
 class ArtifactListApi(Resource):
     @marshal_with(list_fields)
@@ -50,7 +62,6 @@ class ArtifactListApi(Resource):
         category = args.get('category')
         queryText = args.get('query')
         timestamp = args.get('timestamp')
-        timestamp = timestamp.replace(' ','+')  # hack to fix the encoding issue.
         query = session.query(Artifact)
         if dag_id:
             query = query.filter(Artifact.dag_id == dag_id)
@@ -59,7 +70,8 @@ class ArtifactListApi(Resource):
         if category:
             query = query.filter(Artifact.category == category)
         if timestamp:
-            query = query.filter(Artifact.timestamp == timestamp)
+            query = query.filter(Artifact.timestamp == timestamp.replace(' ',
+                                                                         '+'))  # hack to fix the encoding issue.
         if queryText:
             query = query.filter(Artifact.dag_id.like('%{}%'.format(queryText)))
 
@@ -86,3 +98,5 @@ class ArtifactListApi(Resource):
         session.add(artifact)
         session.commit()
         return 'ok'
+
+
