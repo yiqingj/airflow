@@ -73,8 +73,17 @@ class ArtifactListApi(Resource):
             query = query.filter(Artifact.timestamp == timestamp.replace(' ',
                                                                          '+'))  # hack to fix the encoding issue.
         if queryText:
-            query = query.filter(Artifact.dag_id.like('%{}%'.format(queryText)))
-
+            terms = queryText.split()
+            for term in terms:
+                if ':' in term:
+                    # tag query
+                    kv = term.split(':')
+                    if len(kv) != 2:
+                        continue
+                    query = query.filter(Artifact.tags[kv[0]] == kv[1])
+                else:
+                    # tag search
+                    query = query.filter(Artifact.dag_id.like('%{}%'.format(queryText)))
         query = query.limit(per_page).offset((page - 1) * per_page)
 
         artifacts = query.all()
@@ -98,5 +107,3 @@ class ArtifactListApi(Resource):
         session.add(artifact)
         session.commit()
         return 'ok'
-
-
