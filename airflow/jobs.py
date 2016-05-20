@@ -62,7 +62,7 @@ class BaseJob(Base, LoggingMixin):
     __tablename__ = "job"
 
     id = Column(Integer, primary_key=True)
-    dag_id = Column(String(ID_LEN),)
+    dag_id = Column('dag_name', String(ID_LEN),)
     state = Column(String(20))
     job_type = Column(String(30))
     start_date = Column(DateTime(timezone=True))
@@ -89,22 +89,22 @@ class BaseJob(Base, LoggingMixin):
         self.hostname = socket.getfqdn()
         self.executor = executor
         self.executor_class = executor.__class__.__name__
-        self.start_date = datetime.now(pytz.utc)
-        self.latest_heartbeat = datetime.now(pytz.utc)
+        self.start_date = datetime.now()
+        self.latest_heartbeat = datetime.now()
         self.heartrate = heartrate
         self.unixname = getpass.getuser()
         super(BaseJob, self).__init__(*args, **kwargs)
 
     def is_alive(self):
         return (
-            (datetime.now(pytz.utc) - self.latest_heartbeat).seconds <
+            (datetime.now() - self.latest_heartbeat).seconds <
             (conf.getint('scheduler', 'JOB_HEARTBEAT_SEC') * 2.1)
         )
 
     def kill(self):
         session = settings.Session()
         job = session.query(BaseJob).filter(BaseJob.id == self.id).first()
-        job.end_date = datetime.now(pytz.utc)
+        job.end_date = datetime.now()
         try:
             self.on_kill()
         except:
@@ -150,12 +150,12 @@ class BaseJob(Base, LoggingMixin):
 
         if job.latest_heartbeat:
             sleep_for = self.heartrate - (
-                datetime.now(pytz.utc) - job.latest_heartbeat).total_seconds()
+                datetime.now() - job.latest_heartbeat).total_seconds()
             if sleep_for > 0:
                 sleep(sleep_for)
 
-        job.latest_heartbeat = datetime.now(pytz.utc)
-
+        job.latest_heartbeat = datetime.now()
+        print(job.latest_heartbeat)
         session.merge(job)
         session.commit()
         session.close()
@@ -178,7 +178,7 @@ class BaseJob(Base, LoggingMixin):
         self._execute()
 
         # Marking the success in the DB
-        self.end_date = datetime.now(pytz.utc)
+        self.end_date = datetime.now()
         self.state = State.SUCCESS
         session.merge(self)
         session.commit()
@@ -275,20 +275,20 @@ class SchedulerJob(BaseJob):
 
         max_tis = session.query(TI).filter(
             TI.dag_id == dag.dag_id,
-            TI.task_id == sq.c.task_id,
+            TI.task_id == sq.c.task_name,
             TI.execution_date == sq.c.max_ti,
         ).all()
 
-        ts = datetime.now(pytz.utc)
+        ts = datetime.now()
         SlaMiss = models.SlaMiss
         for ti in max_tis:
             task = dag.get_task(ti.task_id)
             dttm = ti.execution_date
             if task.sla:
                 dttm = dag.following_schedule(dttm)
-                while dttm < datetime.now(pytz.utc):
+                while dttm < datetime.now():
                     following_schedule = dag.following_schedule(dttm)
-                    if following_schedule + task.sla < datetime.now(pytz.utc):
+                    if following_schedule + task.sla < datetime.now():
                         session.merge(models.SlaMiss(
                             task_id=ti.task_id,
                             dag_id=ti.dag_id,
@@ -402,9 +402,9 @@ class SchedulerJob(BaseJob):
             for dr in active_runs:
                 if (
                         dr.start_date and dag.dagrun_timeout and
-                        dr.start_date < datetime.now(pytz.utc) - dag.dagrun_timeout):
+                        dr.start_date < datetime.now() - dag.dagrun_timeout):
                     dr.state = State.FAILED
-                    dr.end_date = datetime.now(pytz.utc)
+                    dr.end_date = datetime.now()
             session.commit()
 
             qry = session.query(func.max(DagRun.execution_date)).filter_by(
@@ -415,7 +415,7 @@ class SchedulerJob(BaseJob):
             last_scheduled_run = qry.scalar()
             next_run_date = None
             if dag.schedule_interval == '@once' and not last_scheduled_run:
-                next_run_date = datetime.now(pytz.utc)
+                next_run_date = datetime.now()
             elif not last_scheduled_run:
                 # First run
                 TI = models.TaskInstance
@@ -432,11 +432,10 @@ class SchedulerJob(BaseJob):
                     task_start_dates = [t.start_date for t in dag.tasks]
                     if task_start_dates:
                         next_run_date = min(task_start_dates)
-                        next_run_date = next_run_date.replace(tzinfo=pytz.utc)
                     else:
                         next_run_date = None
             elif dag.schedule_interval != '@once':
-                next_run_date = dag.following_schedule(last_scheduled_run)  #TODO need to convert to UTC!
+                next_run_date = dag.following_schedule(last_scheduled_run)
 
             # don't ever schedule prior to the dag's start_date
             if dag.start_date:
@@ -459,28 +458,45 @@ class SchedulerJob(BaseJob):
             task_end_dates = [t.end_date for t in dag.tasks if t.end_date]
             if task_end_dates:
                 min_task_end_date = min(task_end_dates)
-                min_task_end_date = min_task_end_date.replace(tzinfo=pytz.utc)
             if next_run_date and min_task_end_date and next_run_date > min_task_end_date:
                 return
 
-            if next_run_date <= datetime.now(pytz.utc):
+            if next_run_date <= datetime.now():
+                orm_dag = session.query(models.DagModel).filter(models.DagModel.dag_id == dag.dag_id).first()
                 next_run = DagRun(
                     dag_id=dag.dag_id,
                     run_id='scheduled__' + next_run_date.isoformat(),
                     execution_date=next_run_date,
-                    start_date=datetime.now(pytz.utc),
+                    start_date=datetime.now(),
                     state=State.RUNNING,
                     external_trigger=False,
-                    conf=dag.params
+                    conf=dag.params,
+                    dag_ref_id=orm_dag.id
                 )
                 session.add(next_run)
+                session.flush()
                 # yiqing: create all task instances when scheduling it to make web UI easier.
                 TI = models.TaskInstance
+                map = {}
                 for task in dag.tasks:
                     ti = TI(task, next_run_date)
-                    ti.upstreams = [t.task_id for t in task.upstream_list]
-                    ti.downstreams = [t.task_id for t in task.downstream_list]
-                    session.merge(ti)
+                    # orm_task = session.query(models.Task)\
+                    #     .filter(models.Task.task_id == task.task_id).one()
+                    # ti.task_ref_id = orm_task.id
+                    ti.dag_run_id = next_run.id
+                    map[ti.task_id] = ti
+                    session.add(ti)
+                session.commit()
+                # second round to build relation
+                for task in dag.tasks:
+                    ti1 = map[task.task_id]
+                    for d in task.downstream_list:
+                        ti2 = map[d.task_id]
+                        r = models.TaskInstanceRelation(
+                            task_instances_id=ti1.id,
+                            downstreams_id=ti2.id
+                        )
+                        session.add(r)
                 session.commit()
                 return next_run
 
@@ -504,9 +520,9 @@ class SchedulerJob(BaseJob):
             pickle_id = dag.pickle(session).id
 
         db_dag = session.query(DagModel).filter_by(dag_id=dag.dag_id).first()
-        last_scheduler_run = db_dag.last_scheduler_run or datetime(2000, 1, 1, tzinfo=pytz.utc)
+        last_scheduler_run = db_dag.last_scheduler_run or datetime(2000, 1, 1)
         secs_since_last = (
-            datetime.now(pytz.utc) - last_scheduler_run).total_seconds()
+            datetime.now() - last_scheduler_run).total_seconds()
         # if db_dag.scheduler_lock or
         if secs_since_last < self.heartrate:
             session.commit()
@@ -515,7 +531,7 @@ class SchedulerJob(BaseJob):
         else:
             # Taking a lock
             db_dag.scheduler_lock = True
-            db_dag.last_scheduler_run = datetime.now(pytz.utc)
+            db_dag.last_scheduler_run = datetime.now()
             session.commit()
 
         active_runs = dag.get_active_runs()  # a list of execution dates, also update run state here
@@ -714,7 +730,7 @@ class SchedulerJob(BaseJob):
         self.runs = 0
         while not self.num_runs or self.num_runs > self.runs:
             try:
-                loop_start_dttm = datetime.now(pytz.utc)
+                loop_start_dttm = datetime.now()
                 try:
                     self.prioritize_queued(executor=executor, dagbag=dagbag)
                 except Exception as e:
@@ -769,7 +785,7 @@ class SchedulerJob(BaseJob):
 
                 self.logger.info("Done queuing tasks, calling the executor's "
                               "heartbeat")
-                duration_sec = (datetime.now(pytz.utc) - loop_start_dttm).total_seconds()
+                duration_sec = (datetime.now() - loop_start_dttm).total_seconds()
                 self.logger.info("Loop took: {} seconds".format(duration_sec))
                 try:
                     self.import_errors(dagbag)
@@ -865,7 +881,7 @@ class BackfillJob(BaseJob):
                 continue
 
             start_date = start_date or task.start_date
-            end_date = end_date or task.end_date or datetime.now(pytz.utc)
+            end_date = end_date or task.end_date or datetime.now()
             for dttm in self.dag.date_range(start_date, end_date=end_date):
                 ti = models.TaskInstance(task, dttm)
                 tasks_to_run[ti.key] = ti
@@ -1103,7 +1119,7 @@ class LocalTaskJob(BaseJob):
 
     """
     def heartbeat_callback(self):
-        if datetime.now(pytz.utc) - self.start_date < timedelta(seconds=300):
+        if datetime.now() - self.start_date < timedelta(seconds=300):
             return
         # Suicide pill
         TI = models.TaskInstance

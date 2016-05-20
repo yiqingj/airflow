@@ -97,8 +97,8 @@ class BranchPythonOperator(PythonOperator):
                 ti = TaskInstance(
                     task, execution_date=context['ti'].execution_date)
                 ti.state = State.SKIPPED
-                ti.start_date = datetime.now(pytz.utc)
-                ti.end_date = datetime.now(pytz.utc)
+                ti.start_date = datetime.now()
+                ti.end_date = datetime.now()
                 session.merge(ti)
         session.commit()
         session.close()
@@ -130,8 +130,8 @@ class ShortCircuitOperator(PythonOperator):
                 ti = TaskInstance(
                     task, execution_date=context['ti'].execution_date)
                 ti.state = State.SKIPPED
-                ti.start_date = datetime.now(pytz.utc)
-                ti.end_date = datetime.now(pytz.utc)
+                ti.start_date = datetime.now()
+                ti.end_date = datetime.now()
                 session.merge(ti)
             session.commit()
             session.close()

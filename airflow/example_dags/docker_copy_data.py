@@ -16,7 +16,7 @@ TODO: Review the workflow, change it accordingly to to your environment & enable
 # default_args = {
 #     'owner': 'airflow',
 #     'depends_on_past': False,
-#     'start_date': datetime.now(pytz.utc),
+#     'start_date': datetime.now(),
 #     'email': ['airflow@airflow.com'],
 #     'email_on_failure': False,
 #     'email_on_retry': False,

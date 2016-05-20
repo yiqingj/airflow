@@ -126,7 +126,7 @@ def backfill(args, dag=None):
 def trigger_dag(args):
     session = settings.Session()
     # TODO: verify dag_id
-    execution_date = datetime.now(pytz.utc)
+    execution_date = datetime.now()
     run_id = args.run_id or "manual__{0}".format(execution_date.isoformat())
     dr = session.query(DagRun).filter(
         DagRun.dag_id == args.dag_id, DagRun.run_id == run_id).first()
@@ -357,11 +357,16 @@ def test(args, dag=None):
         format=settings.SIMPLE_LOG_FORMAT)
     dag = dag or get_dag(args)
 
+
     task = dag.get_task(task_id=args.task_id)
     # Add CLI provided task_params to task.params
     if args.task_params:
         passed_in_params = json.loads(args.task_params)
         task.params.update(passed_in_params)
+        dag.params.update(passed_in_params)
+        env = task.dag.default_args.get('env',None)
+        if env:
+            env.update(passed_in_params)
     ti = TaskInstance(task, args.execution_date)
 
     if args.dry_run:
@@ -542,7 +547,7 @@ def web(args):
         sp.wait()
 
 def scheduler(args):
-    db_utils.upgradedb()
+    # db_utils.upgradedb()
     # reset after db upgrade, alembic will mess up the log
     import sys
     logging.root.handlers = []

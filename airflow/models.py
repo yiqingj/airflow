@@ -47,12 +47,12 @@ import pytz
 from git import Repo, Remote, FetchInfo
 
 from sqlalchemy import (
-    Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
+    Column, Integer, BigInteger, String, DateTime, Text, Boolean, ForeignKey, PickleType,
     Index, Float, TEXT)
-from sqlalchemy import case, func, or_, and_
+from sqlalchemy import case, func, or_, and_, Table
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.dialects.mysql import LONGTEXT
-from sqlalchemy.orm import relationship, synonym
+from sqlalchemy.orm import relationship, synonym, backref
 
 from croniter import croniter
 import six
@@ -129,7 +129,7 @@ def clear_task_instances(tis, session, activate_dag_runs=True):
         ).all()
         for dr in drs:
             dr.state = State.RUNNING
-            dr.start_date = datetime.now(pytz.utc)
+            dr.start_date = datetime.now()
 
 
 class DagBag(LoggingMixin):
@@ -318,7 +318,7 @@ class DagBag(LoggingMixin):
         TI = TaskInstance
         secs = (
             configuration.getint('scheduler', 'job_heartbeat_sec') * 3) + 120
-        limit_dttm = datetime.now(pytz.utc) - timedelta(seconds=secs)
+        limit_dttm = datetime.now() - timedelta(seconds=secs)
         self.logger.info(
             "Failing jobs without heartbeat after {}".format(limit_dttm))
 
@@ -351,7 +351,7 @@ class DagBag(LoggingMixin):
         """
         self.dags[dag.dag_id] = dag
         dag.resolve_template_files()
-        dag.last_loaded = datetime.now(pytz.utc)
+        dag.last_loaded = datetime.now()
 
         for task in dag.tasks:
             settings.policy(task)
@@ -362,6 +362,7 @@ class DagBag(LoggingMixin):
                 DagModel).filter(DagModel.dag_id == dag.dag_id).first()
             if not orm_dag:
                 orm_dag = DagModel(dag_id=dag.dag_id)
+                session.add(orm_dag)
             orm_dag.fileloc = root_dag.full_filepath
             orm_dag.is_subdag = dag.is_subdag
             orm_dag.owners = root_dag.owner
@@ -369,24 +370,36 @@ class DagBag(LoggingMixin):
             orm_dag.schedule = dag.schedule_interval_raw
             orm_dag.params = json.dumps(dag.params)
             orm_dag.git_repo = source
-            session.merge(orm_dag)
+            # session.merge(orm_dag)
+            session.flush()
             # yiqing: add task into task table for web UI.
-
-            session.query(Task).filter(Task.dag_id == orm_dag.dag_id).delete()
+            orm_tasks = session.query(Task).filter(Task.dag_id == orm_dag.dag_id).all()
+            map = { t.task_id:t for t in orm_tasks}
+            map2 = {}
             for task in dag.tasks:
-
-                # orm_task = session.query(Task).filter(Task.task_id == task.task_id,
-                #                                       Task.dag_id == task.dag_id).first()
-                # if not orm_task:
-                orm_task = Task(
+                if task.task_id in map:
+                    orm_task = map[task.task_id]
+                    del map[task.task_id]
+                else:
+                    orm_task = Task(
                         task_id=task.task_id,
-                        dag_id=task.dag_id)
+                        dag_id=task.dag_id,
+                        dag_ref_id = orm_dag.id)
+                    session.add(orm_task)
+                map2[task.task_id] = orm_task
                 orm_task.operator = task.task_type
-                orm_task.upstreams = [t.task_id for t in task.upstream_list]
-                orm_task.downstreams = [t.task_id for t in task.downstream_list]
-                session.merge(orm_task)
+            for task_id, task in map.items():
+                task.is_active = False
+            session.commit()
 
-
+            # set up relations
+            for task in dag.tasks:
+                t1 = map2[task.task_id]
+                session.query(TaskRelation).filter(TaskRelation.tasks_id == t1.id).delete()
+                for ds in task.downstream_list:
+                    t2 = session.query(Task).filter(Task.dag_id==ds.dag_id, Task.task_id==ds.task_id).first()
+                    r = TaskRelation(tasks_id=t1.id, downstreams_id=t2.id)
+                    session.add(r)
             session.commit()
             session.close()
 
@@ -726,17 +739,48 @@ class DagPickle(Base):
         self.pickle = dag
 
 
+# task_association = Table('task_downstream', Base.metadata,
+#                          Column('task_id', Integer, ForeignKey('task.id'), primary_key=True),
+#                          Column('downstreams_id', Integer, ForeignKey('task.id'), primary_key=True)
+#                          )
+
+class TaskRelation(Base):
+    __tablename__ = 'task_downstream'
+    tasks_id = Column(BigInteger, ForeignKey('task.id'), primary_key=True)
+    downstreams_id = Column(BigInteger, ForeignKey('task.id'), primary_key=True)
+
+
 class Task(Base):
     """
     Task store the task information for web viewing purpose
     """
     __tablename__ = 'task'
-    task_id =Column(String(ID_LEN), primary_key=True)  # this is the task name
-    dag_id =Column(String(ID_LEN), primary_key=True)  # this is the dag name
+    id = Column(BigInteger, primary_key=True)
+    task_id =Column('task_name',String(ID_LEN), primary_key=True)  # this is the task name
+    dag_id =Column('dag_name', String(ID_LEN), primary_key=True)  # this is the dag name
+    dag_ref_id = Column('dag_id', Integer)
     operator =Column(String(50))  # the operator type of this task.=
-    upstreams =Column(ARRAY(String, dimensions=1))
-    downstreams =Column(ARRAY(String, dimensions=1))
+    # downstreams = relationship('Task', secondary=task_association,
+    #                            primaryjoin=id==task_association.c.task_id,
+    #                            secondaryjoin=id==task_association.c.downstreams_id,
+    #                            backref=backref('upstreams', remote_side='Task.id'),
+    #                            cascade="all, delete", passive_deletes=True)
+    # downstreams =Column(ARRAY(String, dimensions=1))
+    # downstreams =Column(ARRAY(String, dimensions=1))
     code =Column(TEXT)
+
+    is_active = Column(Boolean, default=True)  # used for tracking if Task already exists in database
+
+    # __mapper_args__ = {
+    #     'polymorphic_identity':'Task',
+    #     'polymorphic_on':operator
+    # }
+
+class TaskInstanceRelation(Base):
+    __tablename__ = 'task_instance_downstream'
+    task_instances_id = Column(BigInteger, ForeignKey('task_instance.id'), primary_key=True)
+    downstreams_id = Column(BigInteger, ForeignKey('task_instance.id'), primary_key=True)
+
 
 class TaskInstance(Base):
     """
@@ -753,9 +797,9 @@ class TaskInstance(Base):
     """
 
     __tablename__ = "task_instance"
-
-    task_id = Column(String(ID_LEN), primary_key=True)
-    dag_id = Column(String(ID_LEN), primary_key=True)
+    id = Column(BigInteger, primary_key=True)
+    task_id = Column('task_name', String(ID_LEN), primary_key=True)
+    dag_id = Column('dag_name', String(ID_LEN), primary_key=True)
     execution_date = Column(DateTime(timezone=True), primary_key=True)
     start_date = Column(DateTime(timezone=True))
     end_date = Column(DateTime(timezone=True))
@@ -774,8 +818,11 @@ class TaskInstance(Base):
     # mark expired to true for lower versions so scheduler knows to skip them(easily)
     expired = Column(Boolean, default=False)
     version = Column(Integer, default=0, primary_key=True)  # version of dag run, used for re-run
-    upstreams =Column(ARRAY(String, dimensions=1))
-    downstreams =Column(ARRAY(String, dimensions=1))
+    task_ref_id = Column('task_id', BigInteger)
+    dag_run_id = Column(BigInteger)
+
+    # upstreams =Column(ARRAY(String, dimensions=1))
+    # downstreams =Column(ARRAY(String, dimensions=1))
 
 
     __table_args__ = (
@@ -920,6 +967,9 @@ class TaskInstance(Base):
         else:
             ti = qry.first()
         if ti:
+            self.id = ti.id
+            self.task_ref_id = ti.task_ref_id
+            self.dag_run_id = ti.dag_run_id
             self.state = ti.state
             self.start_date = ti.start_date
             self.end_date = ti.end_date
@@ -949,8 +999,8 @@ class TaskInstance(Base):
 
     def set_state(self, state, session):
         self.state = state
-        self.start_date = datetime.now(pytz.utc)
-        self.end_date = datetime.now(pytz.utc)
+        self.start_date = datetime.now()
+        self.end_date = datetime.now()
         session.merge(self)
         session.commit()
 
@@ -979,7 +1029,7 @@ class TaskInstance(Base):
         :type flag_upstream_failed: boolean
         """
         # is the execution date in the future?
-        if self.execution_date > datetime.now(pytz.utc):
+        if self.execution_date > datetime.now():
             return False
         # is the task still in the retry waiting period?
         elif self.state == State.UP_FOR_RETRY and not self.ready_for_retry():
@@ -1208,7 +1258,7 @@ class TaskInstance(Base):
         to be retried.
         """
         return self.state == State.UP_FOR_RETRY and \
-            self.end_date + self.task.retry_delay < datetime.now(pytz.utc)
+            self.end_date + self.task.retry_delay < datetime.now()
 
     @provide_session
     def pool_full(self, session):
@@ -1257,7 +1307,7 @@ class TaskInstance(Base):
             self.refresh_from_db(session=session, lock_for_update=True)
             self.clear_xcom_data()
         self.job_id = job_id
-        iso = datetime.now(pytz.utc).isoformat()
+        iso = datetime.now().isoformat()
         self.hostname = socket.getfqdn()
         self.operator = task.__class__.__name__
 
@@ -1293,7 +1343,7 @@ class TaskInstance(Base):
             msg = "Starting attempt {attempt} of {total}".format(
                 attempt=self.try_number % (task.retries + 1) + 1,
                 total=task.retries + 1)
-            self.start_date = datetime.now(pytz.utc)
+            self.start_date = datetime.now()
 
             if not mark_success and self.state != State.QUEUED and (
                     self.pool or self.task.dag.concurrency_reached):
@@ -1376,7 +1426,7 @@ class TaskInstance(Base):
                 raise
 
             # Recording SUCCESS
-            self.end_date = datetime.now(pytz.utc)
+            self.end_date = datetime.now()
             self.set_duration()
             if not test_mode:
                 session.add(Log(self.state, self))
@@ -1405,7 +1455,7 @@ class TaskInstance(Base):
         logging.exception(error)
         task = self.task
         session = settings.Session()
-        self.end_date = datetime.now(pytz.utc)
+        self.end_date = datetime.now()
         self.set_duration()
         if not test_mode:
             session.add(Log(State.FAILED, self))
@@ -1490,7 +1540,8 @@ class TaskInstance(Base):
 
         env = task.dag.default_args.get('env',None)
         if dag_run and dag_run.conf:
-            conf = {param['key']:param['value'] for param in dag_run.conf}
+            # conf = {param['key']:param['value'] for param in dag_run.conf.items()}
+            conf = dag_run.conf
             params.update(conf)
             if env:
                 env.update(conf)
@@ -1670,15 +1721,15 @@ class Log(Base):
 
     id = Column(Integer, primary_key=True)
     dttm = Column(DateTime(timezone=True))
-    dag_id = Column(String(ID_LEN))
-    task_id = Column(String(ID_LEN))
+    dag_id = Column('dag_name', String(ID_LEN))
+    task_id = Column('task_name', String(ID_LEN))
     event = Column(String(30))
     execution_date = Column(DateTime(timezone=True))
     owner = Column(String(500))
     extra = Column(Text)
 
     def __init__(self, event, task_instance, owner=None, extra=None, **kwargs):
-        self.dttm = datetime.now(pytz.utc)
+        self.dttm = datetime.now()
         self.event = event
         self.extra = extra
 
@@ -2247,7 +2298,7 @@ class BaseOperator(object):
         range.
         """
         TI = TaskInstance
-        end_date = end_date or datetime.now(pytz.utc)
+        end_date = end_date or datetime.now()
         return session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
@@ -2295,7 +2346,7 @@ class BaseOperator(object):
         Run a set of task instances for a date range.
         """
         start_date = start_date or self.start_date
-        end_date = end_date or self.end_date or datetime.now(pytz.utc)
+        end_date = end_date or self.end_date or datetime.now()
 
         for dt in self.dag.date_range(start_date, end_date=end_date):
             TaskInstance(self, dt).run(
@@ -2433,7 +2484,8 @@ class DagModel(Base):
     """
     These items are stored in the database for state related information
     """
-    dag_id = Column(String(ID_LEN), primary_key=True)
+    id = Column(Integer, primary_key=True)
+    dag_id = Column('dag_name', String(ID_LEN), primary_key=True)
     # A DAG can be paused from the UI / DB
     # Set this default value of is_paused based on a configuration value!
     is_paused_at_creation = configuration.getboolean('core', 'dags_are_paused_at_creation')
@@ -2583,9 +2635,6 @@ class DAG(LoggingMixin):
         if 'params' in self.default_args:
             self.params.update(self.default_args['params'])
             del self.default_args['params']
-
-        if start_date:
-            start_date = start_date.replace(tzinfo=pytz.utc)
         validate_key(dag_id)
         self.task_dict = dict()
         self.dag_id = dag_id
@@ -2604,7 +2653,7 @@ class DAG(LoggingMixin):
             template_searchpath = [template_searchpath]
         self.template_searchpath = template_searchpath
         self.parent_dag = None  # Gets set when DAGs are loaded
-        self.last_loaded = datetime.now(pytz.utc)
+        self.last_loaded = datetime.now()
         self.safe_dag_id = dag_id.replace('.', '__dot__')
         self.concurrency = concurrency
         self.max_active_runs = max_active_runs
@@ -2666,7 +2715,7 @@ class DAG(LoggingMixin):
 
     # /Context Manager ----------------------------------------------
 
-    def date_range(self, start_date, num=None, end_date=datetime.now(pytz.utc)):
+    def date_range(self, start_date, num=None, end_date=datetime.now()):
         if num:
             end_date = None
         return utils_date_range(
@@ -2674,7 +2723,6 @@ class DAG(LoggingMixin):
             num=num, delta=self._schedule_interval)
 
     def following_schedule(self, dttm):
-        dttm = dttm.astimezone(pytz.utc)
         if isinstance(self._schedule_interval, six.string_types):
             cron = croniter(self._schedule_interval, dttm)
             return cron.get_next(datetime)
@@ -2942,7 +2990,7 @@ class DAG(LoggingMixin):
         if not start_date:
             start_date = (datetime.today()-timedelta(30)).date()
             start_date = datetime.combine(start_date, datetime.min.time())
-        end_date = end_date or datetime.now(pytz.utc)
+        end_date = end_date or datetime.now()
         tis = session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.execution_date >= start_date,
@@ -3090,10 +3138,10 @@ class DAG(LoggingMixin):
         d = {}
         d['is_picklable'] = True
         try:
-            dttm = datetime.now(pytz.utc)
+            dttm = datetime.now()
             pickled = pickle.dumps(self)
             d['pickle_len'] = len(pickled)
-            d['pickling_duration'] = "{}".format(datetime.now(pytz.utc) - dttm)
+            d['pickling_duration'] = "{}".format(datetime.now() - dttm)
         except Exception as e:
             logging.exception(e)
             d['is_picklable'] = False
@@ -3111,7 +3159,7 @@ class DAG(LoggingMixin):
         if not dp or dp.pickle != self:
             dp = DagPickle(dag=self)
             session.add(dp)
-            self.last_pickled = datetime.now(pytz.utc)
+            self.last_pickled = datetime.now()
             session.commit()
             self.pickle_id = dp.id
 
@@ -3353,8 +3401,8 @@ class XCom(Base):
     execution_date = Column(DateTime(timezone=True), nullable=False)
 
     # source information
-    task_id = Column(String(ID_LEN), nullable=False)
-    dag_id = Column(String(ID_LEN), nullable=False)
+    task_id = Column('task_name', String(ID_LEN), nullable=False)
+    dag_id = Column('dag_name', String(ID_LEN), nullable=False)
 
     def __repr__(self):
         return '<XCom "{key}" ({task_id} @ {execution_date})>'.format(
@@ -3487,7 +3535,7 @@ class DagRun(Base):
     ID_FORMAT_PREFIX = ID_PREFIX + '{0}'
 
     id = Column(Integer, primary_key=True)
-    dag_id = Column(String(ID_LEN))
+    dag_id = Column('dag_name', String(ID_LEN))
     execution_date = Column(DateTime(timezone=True), default=func.now())
     start_date = Column(DateTime(timezone=True), default=func.now())
     end_date = Column(DateTime(timezone=True))
@@ -3495,6 +3543,7 @@ class DagRun(Base):
     run_id = Column(String(ID_LEN))
     external_trigger = Column(Boolean, default=True)
     conf = Column(PickleType)
+    dag_ref_id = Column('dag_id', BigInteger)
     # yiqing: new columns
     version = Column(Integer, default=0)  # version of dag run, used for re-run
     queue = Column(String(50)) # if specified, overwrites default in code.
@@ -3573,8 +3622,8 @@ class SlaMiss(Base):
     """
     __tablename__ = "sla_miss"
 
-    task_id = Column(String(ID_LEN), primary_key=True)
-    dag_id = Column(String(ID_LEN), primary_key=True)
+    task_id = Column('task_name', String(ID_LEN), primary_key=True)
+    dag_id = Column('dag_name', String(ID_LEN), primary_key=True)
     execution_date = Column(DateTime(timezone=True), primary_key=True)
     email_sent = Column(Boolean, default=False)
     timestamp = Column(DateTime(timezone=True))
@@ -3595,7 +3644,7 @@ class ImportError(Base):
 
 
 class DagBagModel(Base):
-    __tablename__ = 'dagbag'
+    __tablename__ = 'dag_bag'
 
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -3609,10 +3658,10 @@ class DagBagModel(Base):
 class Artifact(Base):
     __tablename__='artifact'
     id = Column(Integer, primary_key=True)
-    dag_id = Column(String(100), nullable=False)
+    dag_id = Column('dag_name', String(100), nullable=False)
     type= Column(String(1000), nullable=False)
     category= Column(String(1000), nullable=False)
     timestamp= Column(DateTime(timezone=True))
     url = Column(String(1000), nullable=False)
-    tags = Column(MutableDict.as_mutable(HSTORE))  # extend to infinity!
+    # tags = Column(MutableDict.as_mutable(HSTORE))  # extend to infinity!
 # do we need plugin auto updated? if so also need a plugin table here.

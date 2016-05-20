@@ -924,7 +924,7 @@ class WebUiTests(unittest.TestCase):
         assert "runme_0" in response.data.decode('utf-8')
 
     def tearDown(self):
-        self.dag_bash.clear(start_date=DEFAULT_DATE, end_date=datetime.now(pytz.utc))
+        self.dag_bash.clear(start_date=DEFAULT_DATE, end_date=datetime.now())
 
 
 class WebPasswordAuthTest(unittest.TestCase):
@@ -1497,7 +1497,7 @@ if 'MySqlOperator' in dir(operators) and 'HiveOperator' in dir(operators):
             self.dag = dag
 
         def test_clear(self):
-            self.dag.clear(start_date=DEFAULT_DATE, end_date=datetime.now(pytz.utc))
+            self.dag.clear(start_date=DEFAULT_DATE, end_date=datetime.now())
 
         def test_mysql_to_hive(self):
             # import airflow.operators

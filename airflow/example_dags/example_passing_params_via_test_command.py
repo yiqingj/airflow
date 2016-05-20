@@ -21,7 +21,7 @@ from airflow.operators import BashOperator, PythonOperator
 
 dag = DAG("example_passing_params_via_test_command",
           default_args={"owner" : "me",
-                        "start_date":datetime.now(pytz.utc)},
+                        "start_date":datetime.now()},
           schedule_interval='*/1 * * * *',
           dagrun_timeout=timedelta(minutes=4)
           )
