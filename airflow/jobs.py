@@ -33,6 +33,7 @@ from dateutil.tz import tzlocal
 
 from git import Remote, Repo, FetchInfo
 import os
+import json
 
 from sqlalchemy import Column, Integer, String, DateTime, func, Index, or_
 from sqlalchemy.orm.session import make_transient
@@ -471,6 +472,7 @@ class SchedulerJob(BaseJob):
                     state=State.RUNNING,
                     external_trigger=False,
                     conf=dag.params,
+                    params=json.dumps(dag.params),
                     dag_ref_id=orm_dag.id
                 )
                 session.add(next_run)
