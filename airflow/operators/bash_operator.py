@@ -26,7 +26,7 @@ class BashOperator(BaseOperator):
     :type env: dict
     :type output_encoding: output encoding of bash command
     """
-    template_fields = ('bash_command', 'env')
+    template_fields = ('bash_command', 'on_fail_command', 'env')
     template_ext = ('.sh', '.bash',)
     ui_color = '#f0ede4'
 
@@ -37,16 +37,20 @@ class BashOperator(BaseOperator):
             xcom_push=False,
             env=None,
             output_encoding='utf-8',
+            on_fail_command=None,
             *args, **kwargs):
         """
         If xcom_push is True, the last line written to stdout will also
         be pushed to an XCom when the bash command completes.
         """
+        if not kwargs.get('on_failure_callback'):
+            kwargs['on_failure_callback'] = self.on_failure_callback
         super(BashOperator, self).__init__(*args, **kwargs)
         self.bash_command = bash_command
         self.env = env
         self.xcom_push_flag = xcom_push
         self.output_encoding = output_encoding
+        self.on_fail_command = on_fail_command
 
     def execute(self, context):
         """
@@ -99,3 +103,43 @@ class BashOperator(BaseOperator):
     def on_kill(self):
         logging.info('Sending SIGTERM signal to bash subprocess')
         self.sp.terminate()
+
+    def on_failure_callback(self, context):
+        if not self.on_fail_command:
+            return
+        on_fail_command = Template(self.on_fail_command).safe_substitute(self.env)
+        # bash_command = self.bash_command
+        ws = context['ws']
+        with TemporaryDirectory(prefix='airflowtmp') as tmp_dir:
+            with NamedTemporaryFile(dir=tmp_dir, prefix=self.task_id) as f:
+
+                f.write(bytes(on_fail_command, 'utf_8'))
+                f.flush()
+                fname = f.name
+                # logging.info("Temporary script "
+                #              "location :{0}".format(fname))
+                logging.info("Running on failure command: " + on_fail_command)
+
+                if not os.path.exists(ws):
+                    try:
+                        os.makedirs(ws)
+                    except:
+                        raise AirflowException("bash work directory can't be created.")
+                sp = Popen(
+                    ['bash', fname],
+                    stdout=PIPE, stderr=STDOUT,
+                    cwd=ws, env=self.env)
+
+                self.sp = sp
+
+                logging.info("Output:")
+                line = ''
+                for line in iter(sp.stdout.readline, b''):
+                    line = line.decode(self.output_encoding).strip()
+                    logging.info(line)
+                sp.wait()
+                logging.info("On failure command exited with "
+                             "return code {0}".format(sp.returncode))
+
+                if sp.returncode:
+                    raise AirflowException("On failure Bash command failed")
