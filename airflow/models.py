@@ -1549,6 +1549,9 @@ class TaskInstance(Base):
         if env:
             params.update(env)
 
+        if task.dag:
+            task.dag.params = params
+
         workspace_folder = configuration.get('core','workspace_folder')
 
         ws = '{}/{}/{}'.format(workspace_folder, self.dag_id, ts_nodash)
