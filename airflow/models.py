@@ -368,7 +368,7 @@ class DagBag(LoggingMixin):
             orm_dag.owners = root_dag.owner
             orm_dag.is_active = True
             orm_dag.schedule = dag.schedule_interval_raw
-            orm_dag.params = json.dumps(dag.params)
+            orm_dag.params = json.dumps(dag.input_params)
             orm_dag.git_repo = source
             # session.merge(orm_dag)
             session.flush()
@@ -516,6 +516,7 @@ class DagBag(LoggingMixin):
                 self.logger.info('updating repo from {}'.format(bag.url))
                 remote = Remote(repo, 'origin')
                 infos = remote.pull()
+                repo.git.checkout(bag.branch)
                 for info in infos:
                     if not info.name.split('/')[1] == bag.branch:
                         continue
@@ -1539,9 +1540,9 @@ class TaskInstance(Base):
             params.update(task.params)
 
         env = task.dag.default_args.get('env',None)
-        if dag_run and dag_run.conf:
+        if dag_run and dag_run.params:
             # conf = {param['key']:param['value'] for param in dag_run.conf.items()}
-            conf = dag_run.conf
+            conf = json.loads(dag_run.params)
             params.update(conf)
             if env:
                 env.update(conf)
@@ -2609,11 +2610,19 @@ class DAG(LoggingMixin):
                 'core', 'max_active_runs_per_dag'),
             dagrun_timeout=None,
             sla_miss_callback=None,
-            params=None):
+            params=None,
+            input_params=None):
 
         self.user_defined_macros = user_defined_macros
         self.default_args = default_args or {}
-        self.params = params or {}
+
+        self.input_params = input_params or []
+        params = params or {}
+        if input_params:
+            for group in input_params:
+                for p in group.get('params'):
+                    params[p['key']] = str(p['value'])
+        self.params = params
 
         # set environment variables
         # update local variables with os environment variables if exists
@@ -3547,7 +3556,7 @@ class DagRun(Base):
     # yiqing: new columns
     version = Column(Integer, default=0)  # version of dag run, used for re-run
     queue = Column(String(50)) # if specified, overwrites default in code.
-
+    params = Column(String(2000))
     __table_args__ = (
         Index('dr_run_id', dag_id, run_id, unique=True),
     )
