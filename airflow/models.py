@@ -2863,7 +2863,8 @@ class DAG(LoggingMixin):
             session.query(DagRun)
             .filter(
                 DagRun.dag_id == self.dag_id,
-                DagRun.state == State.RUNNING)
+                DagRun.state == State.RUNNING,
+                DagRun.execution_date < datetime.now())
             .order_by(DagRun.execution_date)
             .all())
 
