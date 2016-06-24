@@ -586,22 +586,10 @@ def scheduler(args):
 
 
 def serve_logs(args):
-    print("Starting flask")
-    import flask
-    flask_app = flask.Flask(__name__)
-
-    @flask_app.route('/log/<path:filename>')
-    def serve_logs(filename):  # noqa
-        log = os.path.expanduser(conf.get('core', 'BASE_LOG_FOLDER'))
-        return flask.send_from_directory(
-            log,
-            filename,
-            mimetype="application/json",
-            as_attachment=False)
-    WORKER_LOG_SERVER_PORT = \
-        int(conf.get('celery', 'WORKER_LOG_SERVER_PORT'))
-    flask_app.run(
-        host='0.0.0.0', port=WORKER_LOG_SERVER_PORT)
+    from airflow.bin import logserver
+    log_path = os.path.expanduser(conf.get('core', 'BASE_LOG_FOLDER'))
+    WORKER_LOG_SERVER_PORT = int(conf.get('celery', 'WORKER_LOG_SERVER_PORT'))
+    logserver.run(log_path, WORKER_LOG_SERVER_PORT)
 
 
 def worker(args):
