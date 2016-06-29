@@ -126,7 +126,7 @@ def backfill(args, dag=None):
 def trigger_dag(args):
     session = settings.Session()
     # TODO: verify dag_id
-    execution_date = datetime.now()
+    execution_date = datetime.utcnow()
     run_id = args.run_id or "manual__{0}".format(execution_date.isoformat())
     dr = session.query(DagRun).filter(
         DagRun.dag_id == args.dag_id, DagRun.run_id == run_id).first()

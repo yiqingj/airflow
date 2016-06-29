@@ -35,7 +35,7 @@ def adhoc_run(session=None):
 
     for k in user_input_params.iterkeys():
         user_input_params[k] = getattr(form, k).data
-    execution_date = datetime.now()
+    execution_date = datetime.utcnow()
     trigger = DagRun(
             dag_id=form.dag_id.data,
             run_id='adhoc_' + execution_date.isoformat(),
