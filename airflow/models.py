@@ -1546,7 +1546,12 @@ class TaskInstance(Base):
             params.update(conf)
             if env:
                 env.update(conf)
+
         if env:
+            variables = session.query(Variable).all()
+            for v in variables:
+                if env.has_key(v.key):
+                    env[v.key] = v.val
             params.update(env)
 
         if task.dag:

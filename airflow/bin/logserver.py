@@ -1,24 +1,6 @@
 #!/usr/bin/env python
 
-# Portions Copyright (C) 2009,2010  Xyne
-# Portions Copyright (C) 2011 Sean Goller
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# (version 2) as published by the Free Software Foundation.
-#
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-
-
-"""Range HTTP Server.
+"""Ranged HTTP Server.
 
 This module builds on BaseHTTPServer by implementing the standard GET
 and HEAD requests in a fairly straightforward manner, and includes support
@@ -159,7 +141,7 @@ class RangeHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         start_range = 0 if start_range < 0 else start_range
         end_range = size if end_range > size else end_range
-        print('start: {}, end: {}, size: {}'.format(start_range, end_range, size))
+        # print('start: {}, end: {}, size: {}'.format(start_range, end_range, size))
         if start_range > end_range:
             self.send_header("Content-Range", "bytes */" + str(size))
             self.send_response(204)
@@ -174,7 +156,7 @@ class RangeHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
 
         self.end_headers()
-        print "Sending Bytes ", start_range, " to ", end_range, "...\n"
+        # print "Sending Bytes ", start_range, " to ", end_range, "...\n"
         return (f, start_range, end_range)
 
     def list_directory(self, path):
@@ -290,8 +272,7 @@ class RangeHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '.py': 'text/plain',
         '.c': 'text/plain',
         '.h': 'text/plain',
-        '.mp4': 'video/mp4',
-        '.ogg': 'video/ogg',
+        '.mp4': 'video/mp4'
     })
 
 
