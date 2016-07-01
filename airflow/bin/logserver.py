@@ -211,7 +211,8 @@ class RangeHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         # abandon query parameters
         path = path.split('?', 1)[0]
         path = path.split('#', 1)[0]
-        path = path.lstrip('/log')  # a hack to keep java & python log service same pattern.
+        if path.startswith('/log'):
+            path = path[4:]
 
         path = posixpath.normpath(urllib.unquote(path))
         words = path.split('/')
