@@ -502,6 +502,7 @@ class DagBag(LoggingMixin):
         """Collection dags from git repo. in the future we might support more
         """
         session = settings.Session()
+        dag_bags = []
         for bag in session.query(DagBagModel).filter(~DagBagModel.disabled):
             try:
                 base_dir = configuration.get('core', 'GIT_REPO_FOLDER')
@@ -521,13 +522,14 @@ class DagBag(LoggingMixin):
                     if not info.name.split('/')[1] == bag.branch:
                         continue
                     if not (info.flags & FetchInfo.HEAD_UPTODATE) or not only_if_updated or is_init:
-                        self.logger.info('loading from git repo...')
                         dag_folder = os.path.join(base_dir, bag.name, bag.folder)
-                        self.collect_dags(dag_folder, only_if_updated=only_if_updated, source=bag.name)
-
+                        dag_bags.append((bag.name, dag_folder))
             except Exception as e:
                 self.logger.exception(e)
-                self.logger.error('dag collection failed!')
+                self.logger.error('git update failed!')
+        for name, folder in dag_bags:
+            self.collect_dags(folder, only_if_updated=only_if_updated, source=name)
+        session.close()
 
     def deactivate_inactive_dags(self):
         active_dag_ids = [dag.dag_id for dag in list(self.dags.values())]
@@ -2523,6 +2525,7 @@ class DagModel(Base):
 
     # yiqing : make webapp work without dag python objects.
     params = Column(TEXT)  # json format
+    description = Column(TEXT)   # to show in dag create page.
     schedule = Column(String(1000))
     health = Column(String(30))
 

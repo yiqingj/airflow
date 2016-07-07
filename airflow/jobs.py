@@ -156,7 +156,6 @@ class BaseJob(Base, LoggingMixin):
                 sleep(sleep_for)
 
         job.latest_heartbeat = datetime.utcnow()
-        print(job.latest_heartbeat)
         session.merge(job)
         session.commit()
         session.close()
@@ -740,8 +739,9 @@ class SchedulerJob(BaseJob):
 
                 self.runs += 1
                 try:
-                    dagbag.collect_remote_dags(only_if_updated=True)
-                    if self.runs % self.refresh_dags_every == 0:
+                    force_update = True if self.runs % self.refresh_dags_every == 0 else False
+                    dagbag.collect_remote_dags(only_if_updated=not force_update)
+                    if force_update:
                         dagbag.collect_dags()
                         dagbag.deactivate_inactive_dags()
                 except Exception as e:
