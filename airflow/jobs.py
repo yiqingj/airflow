@@ -461,7 +461,7 @@ class SchedulerJob(BaseJob):
             if next_run_date and min_task_end_date and next_run_date > min_task_end_date:
                 return
 
-            if next_run_date <= datetime.utcnow():
+            if next_run_date and next_run_date <= datetime.utcnow():
                 orm_dag = session.query(models.DagModel).filter(models.DagModel.dag_id == dag.dag_id).first()
                 next_run = DagRun(
                     dag_id=dag.dag_id,

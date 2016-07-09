@@ -370,6 +370,8 @@ class DagBag(LoggingMixin):
             orm_dag.schedule = dag.schedule_interval_raw
             orm_dag.params = json.dumps(dag.input_params)
             orm_dag.git_repo = source
+            orm_dag.default_queue = dag.default_args.get('queue','default')
+            orm_dag.description = dag.description
             # session.merge(orm_dag)
             session.flush()
             # yiqing: add task into task table for web UI.
@@ -903,7 +905,7 @@ class TaskInstance(Base):
         iso = self.execution_date.isoformat()
         BASE_URL = configuration.get('webserver', 'BASE_URL')
         return BASE_URL + (
-            "/workflow/task_run/{self.dag_id}/{self.task_id}/{iso}/version;version={self.version}"
+            "/workflow/task_run/{self.id}"
         ).format(**locals())
 
     @property
@@ -1513,6 +1515,7 @@ class TaskInstance(Base):
 
         ds_nodash = ds.replace('-', '')
         ts_nodash = ts.replace('-', '').replace(':', '')
+        ts_onedash = ts.replace('T', '-')
         ts_number = ts_nodash.replace('T','')
         yesterday_ds_nodash = yesterday_ds.replace('-', '')
         tomorrow_ds_nodash = tomorrow_ds.replace('-', '')
@@ -1615,10 +1618,8 @@ class TaskInstance(Base):
         body = (
             "Try {self.try_number} out of {try_}<br>"
             "Exception:<br>{exception}<br>"
-            "Log: <a href='{self.log_url}'>Link</a><br>"
+            "TaskLink: <a href='{self.log_url}'>Link</a><br>"
             "Host: {self.hostname}<br>"
-            "Log file: {self.log_filepath}<br>"
-            "Mark success: <a href='{self.mark_success_url}'>Link</a><br>"
         ).format(**locals())
         send_email(task.email, title, body)
 
@@ -2526,6 +2527,7 @@ class DagModel(Base):
     # yiqing : make webapp work without dag python objects.
     params = Column(TEXT)  # json format
     description = Column(TEXT)   # to show in dag create page.
+    default_queue = Column(String(255))
     schedule = Column(String(1000))
     health = Column(String(30))
 
@@ -2622,8 +2624,10 @@ class DAG(LoggingMixin):
             dagrun_timeout=None,
             sla_miss_callback=None,
             params=None,
-            input_params=None):
+            input_params=None,
+            description=''):
 
+        self.description = description
         self.user_defined_macros = user_defined_macros
         self.default_args = default_args or {}
 
