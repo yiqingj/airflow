@@ -182,7 +182,7 @@ executor = SequentialExecutor
 # The SqlAlchemy connection string to the metadata database.
 # SqlAlchemy supports many different database engine, more information
 # their website
-sql_alchemy_conn = postgresql+psycopg2://airflow:airflow@osm.geo.apple.com:5432/airflow
+sql_alchemy_conn = postgresql+psycopg2://osmflow:osmflow@osm.geo.apple.com:5432/osmflow
 
 # The SqlAlchemy pool size is the maximum number of database connections
 # in the pool.
