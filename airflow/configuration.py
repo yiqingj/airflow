@@ -617,7 +617,7 @@ Setting AIRFLOW_HOME and AIRFLOW_CONFIG from environment variables, using
 """
 
 if 'AIRFLOW_HOME' not in os.environ:
-    AIRFLOW_HOME = expand_env_var('~/airflow')
+    AIRFLOW_HOME = expand_env_var('~/.airflow')
 else:
     AIRFLOW_HOME = expand_env_var(os.environ['AIRFLOW_HOME'])
 

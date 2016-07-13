@@ -5,7 +5,7 @@ import os
 import sys
 
 # Kept manually in sync with airflow.__version__
-version = '2.1.6'
+version = '2.1.7'
 
 
 class Tox(TestCommand):
@@ -132,6 +132,7 @@ setup(
         'requests>=2.5.1, <3',
         'setproctitle>=1.1.8, <2',
         'sqlalchemy>=0.9.8',
+        'bloom2[aurora]',
         # 'thrift>=0.9.2, <0.10',
         'Flask-WTF==0.12',
         'Flask-SQLAlchemy',

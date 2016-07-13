@@ -1308,145 +1308,146 @@ class TaskInstance(Base):
         self.pool = pool or task.pool
         self.test_mode = test_mode
         self.force = force
-        if not test_mode:
-            self.refresh_from_db(session=session, lock_for_update=True)
-            self.clear_xcom_data()
         self.job_id = job_id
         iso = datetime.utcnow().isoformat()
         self.hostname = socket.getfqdn()
         self.operator = task.__class__.__name__
 
-        if self.state == State.RUNNING:
-            logging.warning("Another instance is running, skipping.")
-        elif not force and self.state == State.SUCCESS:
-            logging.info(
-                "Task {self} previously succeeded"
-                " on {self.end_date}".format(**locals())
-            )
-            Stats.incr('previously_succeeded', 1, 1)
-        elif (
-                not ignore_dependencies and
-                not self.are_dependencies_met(
-                    session=session,
-                    ignore_depends_on_past=ignore_depends_on_past,
-                    verbose=True)):
-            logging.warning("Dependencies not met yet")
-        elif (
-                self.state == State.UP_FOR_RETRY and
-                not self.ready_for_retry()):
-            next_run = (self.end_date + task.retry_delay).isoformat()
-            logging.info(
-                "Not ready for retry yet. " +
-                "Next run after {0}".format(next_run)
-            )
-        elif force or self.state in State.runnable():
-            HR = "\n" + ("-" * 80) + "\n"  # Line break
+        if not test_mode:
+            self.refresh_from_db(session=session, lock_for_update=True)
+            self.clear_xcom_data()
 
-            # For reporting purposes, we report based on 1-indexed,
-            # not 0-indexed lists (i.e. Attempt 1 instead of
-            # Attempt 0 for the first attempt).
-            msg = "Starting attempt {attempt} of {total}".format(
-                attempt=self.try_number % (task.retries + 1) + 1,
-                total=task.retries + 1)
-            self.start_date = datetime.utcnow()
+            if self.state == State.RUNNING:
+                logging.warning("Another instance is running, skipping.")
+            elif not force and self.state == State.SUCCESS:
+                logging.info(
+                    "Task {self} previously succeeded"
+                    " on {self.end_date}".format(**locals())
+                )
+                Stats.incr('previously_succeeded', 1, 1)
+            elif (
+                    not ignore_dependencies and
+                    not self.are_dependencies_met(
+                        session=session,
+                        ignore_depends_on_past=ignore_depends_on_past,
+                        verbose=True)):
+                logging.warning("Dependencies not met yet")
+            elif (
+                    self.state == State.UP_FOR_RETRY and
+                    not self.ready_for_retry()):
+                next_run = (self.end_date + task.retry_delay).isoformat()
+                logging.info(
+                    "Not ready for retry yet. " +
+                    "Next run after {0}".format(next_run)
+                )
+            elif force or self.state in State.runnable():
+                HR = "\n" + ("-" * 80) + "\n"  # Line break
 
-            if not mark_success and self.state != State.QUEUED and (
-                    self.pool or self.task.dag.concurrency_reached):
-                # If a pool is set for this task, marking the task instance
-                # as QUEUED
-                self.state = State.QUEUED
-                msg = "Queuing attempt {attempt} of {total}".format(
+                # For reporting purposes, we report based on 1-indexed,
+                # not 0-indexed lists (i.e. Attempt 1 instead of
+                # Attempt 0 for the first attempt).
+                msg = "Starting attempt {attempt} of {total}".format(
                     attempt=self.try_number % (task.retries + 1) + 1,
                     total=task.retries + 1)
+                self.start_date = datetime.utcnow()
+
+                if not mark_success and self.state != State.QUEUED and (
+                        self.pool or self.task.dag.concurrency_reached):
+                    # If a pool is set for this task, marking the task instance
+                    # as QUEUED
+                    self.state = State.QUEUED
+                    msg = "Queuing attempt {attempt} of {total}".format(
+                        attempt=self.try_number % (task.retries + 1) + 1,
+                        total=task.retries + 1)
+                    logging.info(HR + msg + HR)
+
+                    self.queued_dttm = datetime.utcnow()
+                    session.merge(self)
+                    session.commit()
+                    logging.info("Queuing into pool {}".format(self.pool))
+                    return
+
+                # print status message
                 logging.info(HR + msg + HR)
+                self.try_number += 1
 
-                self.queued_dttm = datetime.utcnow()
-                session.merge(self)
-                session.commit()
-                logging.info("Queuing into pool {}".format(self.pool))
-                return
+                if not test_mode:
+                    session.add(Log(State.RUNNING, self))
+                self.state = State.RUNNING
+                self.end_date = None
+                if not test_mode:
+                    session.merge(self)
+                    session.commit()
 
-            # print status message
-            logging.info(HR + msg + HR)
-            self.try_number += 1
-
-            if not test_mode:
-                session.add(Log(State.RUNNING, self))
-            self.state = State.RUNNING
-            self.end_date = None
-            if not test_mode:
-                session.merge(self)
-            session.commit()
-
-            # Closing all pooled connections to prevent
-            # "max number of connections reached"
-            settings.engine.dispose()
-            if verbose:
-                if mark_success:
-                    msg = "Marking success for "
-                else:
-                    msg = "Executing "
-                msg += "{self.task} on {self.execution_date}"
-
-            context = {}
-            try:
-                logging.info(msg.format(self=self))
-                if not mark_success:
-                    context = self.get_template_context()
-
-                    task_copy = copy.copy(task)
-                    self.task = task_copy
-
-                    def signal_handler(signum, frame):
-                        '''Setting kill signal handler'''
-                        logging.error("Killing subprocess")
-                        task_copy.on_kill()
-                        raise AirflowException("Task received SIGTERM signal")
-                    signal.signal(signal.SIGTERM, signal_handler)
-
-                    self.render_templates()
-                    task_copy.pre_execute(context=context)
-
-                    # If a timout is specified for the task, make it fail
-                    # if it goes beyond
-                    result = None
-                    if task_copy.execution_timeout:
-                        with timeout(int(
-                                task_copy.execution_timeout.total_seconds())):
-                            result = task_copy.execute(context=context)
-
+                # Closing all pooled connections to prevent
+                # "max number of connections reached"
+                settings.engine.dispose()
+                if verbose:
+                    if mark_success:
+                        msg = "Marking success for "
                     else:
+                        msg = "Executing "
+                    msg += "{self.task} on {self.execution_date}"
+                    logging.info(msg.format(self=self))
+
+        context = {}
+        try:
+
+            if not mark_success:
+                context = self.get_template_context(test_mode=test_mode)
+
+                task_copy = copy.copy(task)
+                self.task = task_copy
+
+                def signal_handler(signum, frame):
+                    '''Setting kill signal handler'''
+                    logging.error("Killing subprocess")
+                    task_copy.on_kill()
+                    raise AirflowException("Task received SIGTERM signal")
+                signal.signal(signal.SIGTERM, signal_handler)
+
+                self.render_templates(test_mode=test_mode)
+                task_copy.pre_execute(context=context)
+
+                # If a timout is specified for the task, make it fail
+                # if it goes beyond
+                result = None
+                if task_copy.execution_timeout:
+                    with timeout(int(
+                            task_copy.execution_timeout.total_seconds())):
                         result = task_copy.execute(context=context)
 
-                    # If the task returns a result, push an XCom containing it
-                    if result is not None:
-                        self.xcom_push(key=XCOM_RETURN_KEY, value=result)
+                else:
+                    result = task_copy.execute(context=context)
 
-                    task_copy.post_execute(context=context)
-                self.state = State.SUCCESS
-            except AirflowSkipException:
-                self.state = State.SKIPPED
-            except (Exception, KeyboardInterrupt) as e:
-                self.handle_failure(e, test_mode, context)
-                raise
+                # If the task returns a result, push an XCom containing it
+                if result is not None and not test_mode:
+                    self.xcom_push(key=XCOM_RETURN_KEY, value=result)
 
-            # Recording SUCCESS
-            self.end_date = datetime.utcnow()
-            self.set_duration()
-            if not test_mode:
-                session.add(Log(self.state, self))
-                session.merge(self)
+                task_copy.post_execute(context=context)
+            self.state = State.SUCCESS
+        except AirflowSkipException:
+            self.state = State.SKIPPED
+        except (Exception, KeyboardInterrupt) as e:
+            self.handle_failure(e, test_mode, context)
+            raise
+
+        # Recording SUCCESS
+        self.end_date = datetime.utcnow()
+        self.set_duration()
+        if not test_mode:
+            session.add(Log(self.state, self))
+            session.merge(self)
             session.commit()
 
-            # Success callback
-            try:
-                if task.on_success_callback:
-                    task.on_success_callback(context)
-            except Exception as e3:
-                logging.error("Failed when executing success callback")
-                logging.exception(e3)
+        # Success callback
+        try:
+            if task.on_success_callback:
+                task.on_success_callback(context)
+        except Exception as e3:
+            logging.error("Failed when executing success callback")
+            logging.exception(e3)
 
-        session.commit()
 
     def dry_run(self):
         task = self.task
@@ -1458,12 +1459,13 @@ class TaskInstance(Base):
 
     def handle_failure(self, error, test_mode=False, context=None):
         logging.exception(error)
+        if test_mode:
+            return
         task = self.task
-        session = settings.Session()
         self.end_date = datetime.utcnow()
         self.set_duration()
-        if not test_mode:
-            session.add(Log(State.FAILED, self))
+        session = settings.Session()
+        session.add(Log(State.FAILED, self))
 
         # Let's go deeper
         try:
@@ -1495,13 +1497,12 @@ class TaskInstance(Base):
             logging.error("Failed at executing callback")
             logging.exception(e3)
 
-        if not test_mode:
-            session.merge(self)
+        session.merge(self)
         session.commit()
         logging.error(str(error))
 
     @provide_session
-    def get_template_context(self, session=None):
+    def get_template_context(self, test_mode=False, session=None):
         task = self.task
         from airflow import macros
         tables = None
@@ -1515,7 +1516,7 @@ class TaskInstance(Base):
 
         ds_nodash = ds.replace('-', '')
         ts_nodash = ts.replace('-', '').replace(':', '')
-        ts_onedash = ts.replace('T', '-')
+        ts_onedash = ts_nodash.replace('T', '-')
         ts_number = ts_nodash.replace('T','')
         yesterday_ds_nodash = yesterday_ds.replace('-', '')
         tomorrow_ds_nodash = tomorrow_ds.replace('-', '')
@@ -1529,17 +1530,18 @@ class TaskInstance(Base):
         if hasattr(task, 'dag'):
             if task.dag.params:
                 params.update(task.dag.params)
-            dag_run = (
-                session.query(DagRun)
-                .filter_by(
-                    dag_id=task.dag.dag_id,
-                    execution_date=self.execution_date)
-                .first()
-            )
-            run_id = dag_run.run_id if dag_run else None
-            #TODO  we could add adhoc configuration here!!!!
-            session.expunge_all()
-            session.commit()
+            if not test_mode:
+                dag_run = (
+                    session.query(DagRun)
+                    .filter_by(
+                        dag_id=task.dag.dag_id,
+                        execution_date=self.execution_date)
+                    .first()
+                )
+                run_id = dag_run.run_id if dag_run else None
+                #TODO  we could add adhoc configuration here!!!!
+                session.expunge_all()
+                session.commit()
 
         if task.params:
             params.update(task.params)
@@ -1552,7 +1554,7 @@ class TaskInstance(Base):
             if env:
                 env.update(conf)
 
-        if env:
+        if env and not test_mode:
             variables = session.query(Variable).all()
             for v in variables:
                 if env.has_key(v.key):
@@ -1573,6 +1575,7 @@ class TaskInstance(Base):
             'ts': ts,
             'ts_nodash': ts_nodash,
             'ts_number': ts_number,
+            'ts_onedash': ts_onedash,
             'ws': ws,
             'yesterday_ds': yesterday_ds,
             'yesterday_ds_nodash': yesterday_ds_nodash,
@@ -1595,9 +1598,9 @@ class TaskInstance(Base):
             'test_mode': self.test_mode,
         }
 
-    def render_templates(self):
+    def render_templates(self, test_mode=False):
         task = self.task
-        jinja_context = self.get_template_context()
+        jinja_context = self.get_template_context(test_mode=test_mode)
         if hasattr(self, 'task') and hasattr(self.task, 'dag'):
             if self.task.dag.user_defined_macros:
                 jinja_context.update(
@@ -2650,6 +2653,12 @@ class DAG(LoggingMixin):
         os_env = {k: v for k, v in os.environ.items() if
                   k in env.viewkeys() & os.environ.keys()}
         env.update(os_env)
+        # for k,v in os.environ.items():
+        #     print(k,v)
+        #     try:
+        #         env[k]=v.encode('utf-8')
+        #     except UnicodeDecodeError:
+        #         pass
 
         env.update({
             'PATH': os.environ['PATH']
