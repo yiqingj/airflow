@@ -2612,7 +2612,7 @@ class DAG(LoggingMixin):
 
     def __init__(
             self, dag_id,
-            schedule_interval=timedelta(days=1),
+            schedule_interval=None,
             start_date=None, end_date=None,
             full_filepath=None,
             template_searchpath=None,

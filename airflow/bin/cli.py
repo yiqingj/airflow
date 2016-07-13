@@ -991,10 +991,10 @@ class CLIFactory(object):
                 'mark_success', 'force', 'pool',
                 'local', 'raw', 'ignore_dependencies',
                 'ignore_depends_on_past', 'ship_dag', 'pickle', 'job_id', 'version'),
-        }, {
-            'func': initdb,
-            'help': "Initialize the metadata database",
-            'args': tuple(),
+        # }, {
+        #     'func': initdb,
+        #     'help': "Initialize the metadata database",
+        #     'args': tuple(),
         }, {
             'func': list_dags,
             'help': "List all the DAGs",
@@ -1003,10 +1003,10 @@ class CLIFactory(object):
             'func': task_state,
             'help': "Get the status of a task instance",
             'args': ('dag_id', 'task_id', 'execution_date', 'subdir'),
-        }, {
-            'func': serve_logs,
-            'help': "Serve logs generate by worker",
-            'args': tuple(),
+        # }, {
+        #     'func': serve_logs,
+        #     'help': "Serve logs generate by worker",
+        #     'args': tuple(),
         }, {
             'func': test,
             'help': (
@@ -1023,24 +1023,24 @@ class CLIFactory(object):
             'args': (
                 'dag_id', 'execution_date', 'test_filter', 'subdir', 'dry_run',
                 'task_params'),
-        }, {
-            'func': webserver,
-            'help': "Start a Airflow webserver instance",
-            'args': ('port', 'workers', 'workerclass', 'worker_timeout', 'hostname',
-                     'pid', 'daemon', 'stdout', 'stderr', 'log_file',
-                     'debug'),
-        }, {
-            'func': web,
-            'help': "Start a Airflow webserver instance",
-            'args': ('port', 'workers', 'workerclass', 'hostname', 'debug'),
-        }, {
-            'func': resetdb,
-            'help': "Burn down and rebuild the metadata database",
-            'args': ('yes',),
-        }, {
-            'func': upgradedb,
-            'help': "Upgrade metadata database to latest version",
-            'args': tuple(),
+        # }, {
+        #     'func': webserver,
+        #     'help': "Start a Airflow webserver instance",
+        #     'args': ('port', 'workers', 'workerclass', 'worker_timeout', 'hostname',
+        #              'pid', 'daemon', 'stdout', 'stderr', 'log_file',
+        #              'debug'),
+        # }, {
+        #     'func': web,
+        #     'help': "Start a Airflow webserver instance",
+        #     'args': ('port', 'workers', 'workerclass', 'hostname', 'debug'),
+        # }, {
+        #     'func': resetdb,
+        #     'help': "Burn down and rebuild the metadata database",
+        #     'args': ('yes',),
+        # }, {
+        #     'func': upgradedb,
+        #     'help': "Upgrade metadata database to latest version",
+        #     'args': tuple(),
         }, {
             'func': scheduler,
             'help': "Start a scheduler scheduler instance",
