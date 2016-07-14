@@ -2924,9 +2924,9 @@ class DAG(LoggingMixin):
                 t for t in task_instances
                 if t.execution_date == run.execution_date
             ]
+            running_tis = [ t for i in tis if t.state == State.RUNNING]
 
-            if len(tis) >= len(self.active_tasks):
-
+            if not running_tis:
                 # if any roots failed, the run failed
                 root_ids = [t.task_id for t in self.roots]
                 roots = [t for t in tis if t.task_id in root_ids]
