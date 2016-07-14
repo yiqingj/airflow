@@ -1003,10 +1003,10 @@ class CLIFactory(object):
             'func': task_state,
             'help': "Get the status of a task instance",
             'args': ('dag_id', 'task_id', 'execution_date', 'subdir'),
-        # }, {
-        #     'func': serve_logs,
-        #     'help': "Serve logs generate by worker",
-        #     'args': tuple(),
+        }, {
+            'func': serve_logs,
+            'help': "Serve logs generate by worker",
+            'args': tuple(),
         }, {
             'func': test,
             'help': (

@@ -101,7 +101,7 @@ devel_hadoop = devel_minreq + hive + hdfs + webhdfs + kerberos
 devel_all = devel + all_dbs + doc + samba + s3 + slack + crypto + oracle + docker
 
 setup(
-    name='airflow2',
+    name='osmflow',
     description='Programmatically author, schedule and monitor data pipelines',
     license='Apache License 2.0',
     version=version,

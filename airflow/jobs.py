@@ -780,6 +780,7 @@ class SchedulerJob(BaseJob):
                         dag = dagbag.dags[ti_key[0]]
                         task = dag.get_task(ti_key[1])
                         ti = TI(task, ti_key[2], version=ti_key[3])
+                        # TODO overwrite task queue from dag run setting to support adhoc queue
                         self.executor.queue_task_instance(ti, pickle_id=pickle_id)
 
                 for j in jobs:

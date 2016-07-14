@@ -108,6 +108,7 @@ class RangeHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # transmitted *less* than the content-length!
             f = open(path, 'rb')
         except IOError:
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.send_error(404, "File not found")
             return (None, 0, 0)
         if "Range" in self.headers:
